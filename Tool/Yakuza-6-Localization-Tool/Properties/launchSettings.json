@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Yakuza-6-Localization-Tool (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "Yakuza-6-Localization-Tool (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
