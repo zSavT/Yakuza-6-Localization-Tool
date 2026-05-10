@@ -363,3 +363,14 @@ MigrationBackup/
 FodyWeavers.xsd
 
 onnx-models
+
+# Yakuza 6 Localization Tool specifics
+reARMP.exe
+ParTool.exe
+ParLibrary.dll
+Yarhl.dll
+Yakuza 6 - Patch/
+*.bin
+*.bin.json
+*.po
+*.dds
