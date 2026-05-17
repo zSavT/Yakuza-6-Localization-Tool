@@ -13,6 +13,9 @@ namespace PoConverter
         public static int WarningCount = 0;
         public static bool QuietLogs = false;
 
+        // ------------
+        // MAIN EXECUTION
+        // ------------
         public static void Run(string[] args)
         {
             Console.CancelKeyPress += (sender, e) =>
@@ -271,34 +274,45 @@ namespace PoConverter
             int cmnWarnings = 0;
             if (File.Exists(warningsFile))
             {
-                cmnWarnings = File.ReadAllLines(warningsFile).Length;
+                cmnWarnings = File.ReadLines(warningsFile).Count(line => line.StartsWith("[WARNING]"));
             }
             int totalWarnings = WarningCount + cmnWarnings;
 
             stopwatch.Stop();
-            PrintInfo($"\n==================================================================");
-            PrintInfo($"   Batch Operation completed in {stopwatch.Elapsed.TotalSeconds:F2} seconds!");
-            PrintInfo($"==================================================================");
+            PrintHeader($"\n==================================================================");
+            PrintSuccess($"   Batch Operation completed in {stopwatch.Elapsed.TotalSeconds:F2} seconds!");
+            PrintHeader($"==================================================================");
             if (choice == "1")
             {
-                PrintInfo($"    - Files Extracted & Parsed: {targetCount}");
+                PrintInfo($"    - Files Extracted & Parsed : {targetCount}");
             }
             else if (choice == "2")
             {
-                PrintInfo($"    - Texts Updated: {updatedTextsCount}");
-                PrintInfo($"    - Textures Updated: {updatedTexturesCount}");
+                PrintInfo($"    - Texts Updated            : {updatedTextsCount}");
+                PrintInfo($"    - Textures Updated         : {updatedTexturesCount}");
             }
-            PrintInfo($"    - Warnings: {totalWarnings}" + (totalWarnings > 0 && File.Exists(warningsFile) ? " (see warnings.txt)" : ""));
-            PrintInfo($"    - Errors: {ErrorCount}");
-            PrintInfo($"==================================================================");
+
+            if (totalWarnings > 0)
+                PrintWarning($"    - Warnings                 : {totalWarnings}" + (File.Exists(warningsFile) ? " (see warnings.txt)" : ""));
+            else
+                PrintInfo($"    - Warnings                 : 0");
+
+            if (ErrorCount > 0)
+                PrintError($"    - Errors                   : {ErrorCount}");
+            else
+                PrintInfo($"    - Errors                   : 0");
+            PrintHeader($"==================================================================");
 
             if (!autoYes)
             {
-                Console.WriteLine("Press ENTER to close...");
+                Console.WriteLine("\nPress ENTER to close...");
                 Console.ReadLine();
             }
         }
 
+        // ------------
+        // INITIALIZATION & ARGS
+        // ------------
         private static void InitializeDirectories(string choice, bool autoYes, out string patchDir, out string ogFileDir, out string ogJsonDir, out string workspaceDir, out string outputDir, out string convertedJsonDir, out string warningsFile)
         {
             patchDir = Path.Combine(Environment.CurrentDirectory, "Yakuza 6 - Patch");
@@ -379,10 +393,10 @@ namespace PoConverter
                     if (config["gamePath"] != null && !string.IsNullOrWhiteSpace(config["gamePath"]?.ToString())) folderPath = config["gamePath"]?.ToString();
                     if (config["language"] != null && !string.IsNullOrWhiteSpace(config["language"]?.ToString())) language = config["language"]?.ToString() ?? "it";
                     if (config["dictionaryFile"] != null && !string.IsNullOrWhiteSpace(config["dictionaryFile"]?.ToString())) dictFile = config["dictionaryFile"]?.ToString() ?? "dictionary.json";
-                    if (config["skipTextures"] != null) skipTextures = (bool)config["skipTextures"];
-                    if (config["cleanAll"] != null) cleanAll = (bool)config["cleanAll"];
-                    if (config["autoYes"] != null) autoYes = (bool)config["autoYes"];
-                    if (config["quietLogs"] != null) QuietLogs = (bool)config["quietLogs"];
+                    if (config["skipTextures"] != null) skipTextures = (bool?)config["skipTextures"] ?? skipTextures;
+                    if (config["cleanAll"] != null) cleanAll = (bool?)config["cleanAll"] ?? cleanAll;
+                    if (config["autoYes"] != null) autoYes = (bool?)config["autoYes"] ?? autoYes;
+                    if (config["quietLogs"] != null) QuietLogs = (bool?)config["quietLogs"] ?? QuietLogs;
                 }
                 catch (Exception ex)
                 {
@@ -437,6 +451,9 @@ namespace PoConverter
             }
         }
 
+        // ------------
+        // EXTERNAL PROCESSES
+        // ------------
         private static void KillProcesses(string name)
         {
             try
@@ -496,6 +513,9 @@ namespace PoConverter
             }
         }
 
+        // ------------
+        // PAR ARCHIVE TOOLS
+        // ------------
         private static void UnpackParFile(string parPath, string unpackDir, bool recursive = false)
         {
             if (File.Exists(parPath) && !Directory.Exists(unpackDir))
@@ -545,6 +565,9 @@ namespace PoConverter
             }
         }
 
+        // ------------
+        // DICTIONARY & FILTERING
+        // ------------
         private static bool LoadDictionary(string dictFile, out HashSet<string> allowedBinFiles, out HashSet<string> allowedTextureFiles, out HashSet<string> allowedCmnFiles, out Dictionary<string, List<string>> folderFilters)
         {
             allowedBinFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -662,6 +685,9 @@ namespace PoConverter
             return files.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         }
 
+        // ------------
+        // FILE PROCESSING PIPELINE
+        // ------------
         private static string GetRelativePath(string fileDir)
         {
             string normalizedDir = fileDir.Replace('/', '\\');
@@ -770,12 +796,9 @@ namespace PoConverter
                 if (RunProcess(rearmpCmd, $"{rearmpArgsPrefix}\"{copiedBinPath}\""))
                 {
                     string generatedJsonPathInPlace = copiedBinPath + ".json";
-                    string generatedJsonPathCWD = Path.Combine(Environment.CurrentDirectory, filename + ".json");
                     string targetJsonPath = Path.Combine(currentOgJsonDir, filename + ".json");
 
-                    string? actualGeneratedJson = null;
-                    if (File.Exists(generatedJsonPathCWD)) actualGeneratedJson = generatedJsonPathCWD;
-                    else if (File.Exists(generatedJsonPathInPlace)) actualGeneratedJson = generatedJsonPathInPlace;
+                    string? actualGeneratedJson = FindGeneratedFile(filename + ".json", generatedJsonPathInPlace);
 
                     if (actualGeneratedJson != null)
                     {
@@ -824,12 +847,7 @@ namespace PoConverter
         private static bool ProcessRecreationPoFile(string poPath, string workspaceDir, string ogFileDir, string ogJsonDir, string outputDir, string convertedJsonDir, string dictFile, string rearmpCmd, string rearmpArgsPrefix, HashSet<string> allowedCmnFiles, string warningsFile)
         {
             string poFilename = Path.GetFileName(poPath);
-            string fileDir = Path.GetDirectoryName(poPath) ?? "";
-            string relPath = "";
-            if (fileDir.StartsWith(workspaceDir, StringComparison.OrdinalIgnoreCase))
-            {
-                relPath = fileDir.Substring(workspaceDir.Length).TrimStart('\\', '/');
-            }
+            string relPath = GetRelativeWorkspacePath(poPath, workspaceDir);
 
             string currentOgJsonDir = Path.Combine(ogJsonDir, relPath);
             string currentOutputDir = Path.Combine(outputDir, relPath);
@@ -885,17 +903,12 @@ namespace PoConverter
             }
 
             PrintStep("  -> [Pipeline] Executing reARMP to recreate .bin...");
-            
             string targetBinPath = Path.Combine(currentOutputDir, baseName + ".bin");
 
             if (RunProcess(rearmpCmd, $"{rearmpArgsPrefix}\"{outputJsonPath}\""))
             {
                 string generatedBinPathInPlace = Path.Combine(currentOutputDir, jsonFilename + ".bin");
-                string generatedBinPathCWD = Path.Combine(Environment.CurrentDirectory, jsonFilename + ".bin");
-
-                string? actualGeneratedBin = null;
-                if (File.Exists(generatedBinPathCWD)) actualGeneratedBin = generatedBinPathCWD;
-                else if (File.Exists(generatedBinPathInPlace)) actualGeneratedBin = generatedBinPathInPlace;
+                string? actualGeneratedBin = FindGeneratedFile(jsonFilename + ".bin", generatedBinPathInPlace);
 
                 if (actualGeneratedBin != null)
                 {
@@ -932,12 +945,7 @@ namespace PoConverter
         private static bool ProcessRecreationTextureFile(string texPath, string workspaceDir, string outputDir)
         {
             string texFilename = Path.GetFileName(texPath);
-            string fileDir = Path.GetDirectoryName(texPath) ?? "";
-            string relPath = "";
-            if (fileDir.StartsWith(workspaceDir, StringComparison.OrdinalIgnoreCase))
-            {
-                relPath = fileDir.Substring(workspaceDir.Length).TrimStart('\\', '/');
-            }
+            string relPath = GetRelativeWorkspacePath(texPath, workspaceDir);
 
             string currentOutputDir = Path.Combine(outputDir, relPath);
             Directory.CreateDirectory(currentOutputDir);
@@ -948,6 +956,9 @@ namespace PoConverter
             return true;
         }
 
+        // ------------
+        // CONSOLE LOGGING
+        // ------------
         internal static void PrintError(string msg) { ErrorCount++; Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(msg); Console.ResetColor(); }
         internal static void PrintWarning(string msg) { WarningCount++; Console.ForegroundColor = ConsoleColor.Yellow; Console.WriteLine(msg); Console.ResetColor(); }
         internal static void PrintSuccess(string msg) { Console.ForegroundColor = ConsoleColor.Green; Console.WriteLine(msg); Console.ResetColor(); }
@@ -955,6 +966,9 @@ namespace PoConverter
         internal static void PrintStep(string msg) { Console.ForegroundColor = ConsoleColor.DarkGray; Console.WriteLine(msg); Console.ResetColor(); }
         internal static void PrintHeader(string msg) { Console.ForegroundColor = ConsoleColor.Magenta; Console.WriteLine(msg); Console.ResetColor(); }
 
+        // ------------
+        // FILE UTILITIES
+        // ------------
         private static void CopyDirectory(string sourceDir, string destinationDir, bool overwrite = true)
         {
             if (!Directory.Exists(sourceDir)) return;
@@ -997,6 +1011,24 @@ namespace PoConverter
                 }
             }
             return false;
+        }
+
+        private static string GetRelativeWorkspacePath(string fullPath, string workspaceDir)
+        {
+            string fileDir = Path.GetDirectoryName(fullPath) ?? "";
+            if (fileDir.StartsWith(workspaceDir, StringComparison.OrdinalIgnoreCase))
+            {
+                return fileDir.Substring(workspaceDir.Length).TrimStart('\\', '/');
+            }
+            return "";
+        }
+
+        private static string? FindGeneratedFile(string cwdFilename, string inPlacePath)
+        {
+            string cwdPath = Path.Combine(Environment.CurrentDirectory, cwdFilename);
+            if (File.Exists(cwdPath)) return cwdPath;
+            if (File.Exists(inPlacePath)) return inPlacePath;
+            return null;
         }
 
         private static void PrintFilesBeingAdded(string dir)

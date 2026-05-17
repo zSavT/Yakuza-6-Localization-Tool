@@ -11,6 +11,9 @@ namespace PoConverter
 {
     class PoConverter
     {
+        // ------------
+        // MAIN & ROUTING
+        // ------------
         static void Main(string[] args)
         {
             if (args.Length >= 3 && (args[2] == "po2json" || args[2] == "json2po"))
@@ -54,6 +57,9 @@ namespace PoConverter
         }
 
 
+        // ------------
+        // ARGUMENTS & HELP
+        // ------------
         private static void PrintHeaderArgument()
         {
             Pipeline.PrintInfo("Program to convert between JSON and PO files for localization.");
@@ -113,6 +119,9 @@ namespace PoConverter
             return true;
         }
 
+        // ------------
+        // STRUCTURE PARSING
+        // ------------
         private static List<List<string>> GetStructures(string? dictionaryFile, string? targetFile)
         {
             List<List<string>> structures = new List<List<string>> { new List<string> { "", "text" } }; // Fallback structure
@@ -153,6 +162,9 @@ namespace PoConverter
             return structures;
         }
 
+        // ------------
+        // PO TO JSON
+        // ------------
         internal static void PoToJson(string inputFile, string outputFile, string? originalJsonFile, string? dictionaryFile)
         {
             string jsonString = !string.IsNullOrEmpty(originalJsonFile) ? File.ReadAllText(originalJsonFile) : "{}";
@@ -213,6 +225,9 @@ namespace PoConverter
             }
         }
 
+        // ------------
+        // STRING UTILITIES
+        // ------------
         private static string ExtractString(string line)
         {
             int firstQuote = line.IndexOf('"');
@@ -277,6 +292,9 @@ namespace PoConverter
             }
         }
 
+        // ------------
+        // JSON TO PO
+        // ------------
         internal static int JsonToPo(string inputFile, string outputFile, string? dictionaryFile, string language = "it")
         {
             List<string> lines = new List<string>();
@@ -298,17 +316,7 @@ namespace PoConverter
             var validResults = new List<(string Key, string Text)>();
             foreach (var item in risultati)
             {
-                if (string.IsNullOrWhiteSpace(item.Text)) continue;
-                
-                var letters = item.Text.Where(char.IsLetter).ToList();
-                bool hasLetters = letters.Any();
-                bool isOnlyJapanese = hasLetters && letters.All(c => (c >= '\u3040' && c <= '\u30ff') || (c >= '\u3400' && c <= '\u4dbf') || (c >= '\u4e00' && c <= '\u9fff'));
-                
-                bool isInternalId = item.Text.Contains("_") || item.Text.Contains(".dds") || item.Text.Contains(".bin") || item.Text.Contains("[IK]");
-                bool isThreeBytesWithSpace = Encoding.UTF8.GetByteCount(item.Text) == 3 && item.Text.Contains(" ");
-                bool hasRepeatedChars = Regex.IsMatch(item.Text, @"(.)\1{4,}");
-
-                if (isOnlyJapanese || isInternalId || isThreeBytesWithSpace || hasRepeatedChars) continue;
+                if (!IsValidTranslationString(item.Text)) continue;
                 
                 validResults.Add(item);
                 poContent.AppendLine($"msgctxt \"{EscapeString(item.Key)}\"");
@@ -324,6 +332,37 @@ namespace PoConverter
             return validResults.Count;
         }
 
+        // ------------
+        // TEXT VALIDATION
+        // ------------
+        internal static bool IsValidTranslationString(string text, bool requireSpaceAndLetters = false)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return false;
+
+            bool hasSpace = text.Contains(" ");
+            var letters = text.Where(char.IsLetter).ToList();
+            bool hasLetters = letters.Any();
+
+            if (requireSpaceAndLetters && (!hasSpace || !hasLetters)) return false;
+
+            bool isOnlyJapanese = hasLetters && letters.All(c => (c >= '\u3040' && c <= '\u30ff') || (c >= '\u3400' && c <= '\u4dbf') || (c >= '\u4e00' && c <= '\u9fff'));
+            if (isOnlyJapanese) return false;
+
+            bool isInternalId = text.Contains("_") || text.Contains(".dds") || text.Contains(".bin") || text.Contains("[IK]");
+            if (isInternalId) return false;
+
+            bool isThreeBytesWithSpace = Encoding.UTF8.GetByteCount(text) == 3 && hasSpace;
+            if (isThreeBytesWithSpace) return false;
+
+            bool hasRepeatedChars = Regex.IsMatch(text, @"(.)\1{4,}");
+            if (hasRepeatedChars) return false;
+
+            return true;
+        }
+
+        // ------------
+        // DICTIONARY & PO CONVERSION
+        // ------------
         internal static void DictToPo(Dictionary<string, string> dict, string outputFile, string language = "it")
         {
             StringBuilder poContent = new StringBuilder();
@@ -359,6 +398,9 @@ namespace PoConverter
             return dict;
         }
 
+        // ------------
+        // PO PARSER
+        // ------------
         internal class PoEntry
         {
             public string Key { get; set; } = string.Empty;

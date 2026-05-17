@@ -3,13 +3,14 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.RegularExpressions;
 
 namespace Yakuza6LocalizationTool
 {
     public class CmnTextManager
     {
-        // Function to extract texts via raw binary scanning
+        // ------------
+        // TEXT EXTRACTION
+        // ------------
         public static Dictionary<string, string> ExtractTexts(string cmnFilePath)
         {
             Dictionary<string, string> extractedTexts = new Dictionary<string, string>();
@@ -34,17 +35,7 @@ namespace Yakuza6LocalizationTool
                     {
                         string text = utf8.GetString(currentStr.ToArray());
                         
-                        bool hasSpace = text.Contains(" ");
-                        var letters = text.Where(char.IsLetter).ToList();
-                        bool hasLetters = letters.Any();
-                        bool isOnlyJapanese = hasLetters && letters.All(c => (c >= '\u3040' && c <= '\u30ff') || (c >= '\u3400' && c <= '\u4dbf') || (c >= '\u4e00' && c <= '\u9fff'));
-
-                        // Filter: Must contain a space, not be purely Japanese, and not be an internal ID
-                        bool isInternalId = text.Contains("_") || text.Contains(".dds") || text.Contains(".bin");
-                        bool isThreeBytesWithSpace = currentStr.Count == 3 && hasSpace;
-                        bool hasRepeatedChars = Regex.IsMatch(text, @"(.)\1{4,}");
-
-                        if (hasSpace && !isOnlyJapanese && hasLetters && !isInternalId && !isThreeBytesWithSpace && !hasRepeatedChars)
+                        if (global::PoConverter.PoConverter.IsValidTranslationString(text, true))
                         {
                             int capacity = currentStr.Count;
                             string contextId = $"Offset_0x{startOffset:X}_Len_{capacity}";
@@ -78,7 +69,9 @@ namespace Yakuza6LocalizationTool
             return extractedTexts;
         }
 
-        // Function to inject translated texts at explicit binary offsets
+        // ------------
+        // TEXT INJECTION
+        // ------------
         public static void InjectTextsAndSave(string originalCmnPath, string outputCmnPath, Dictionary<string, string> translatedTexts, string? warningsFilePath = null)
         {
             byte[] data = File.ReadAllBytes(originalCmnPath);
@@ -121,8 +114,8 @@ namespace Yakuza6LocalizationTool
                             {
                                 string detailedWarning = $"[WARNING] Truncated Text\r\n" +
                                                          $"File: {originalCmnPath}\r\n" +
-                                                         $"Testo Originale ({origBytes.Count} byte / Max consentito: {maxBytes} byte): {originalText}\r\n" +
-                                                         $"Testo Tradotto  ({translatedByteCount} byte): {translatedText}\r\n" +
+                                                         $"Original Text   ({origBytes.Count} bytes / Max allowed: {maxBytes} bytes): {originalText}\r\n" +
+                                                         $"Translated Text ({translatedByteCount} bytes): {translatedText}\r\n" +
                                                          "--------------------------------------------------\r\n";
                                 try { File.AppendAllText(warningsFilePath, detailedWarning); } catch { }
                             }
