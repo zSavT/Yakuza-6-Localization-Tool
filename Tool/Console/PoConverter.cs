@@ -420,8 +420,7 @@ namespace PoConverter
         {
             string msgstrUnescaped = UnescapeString(msgStr);
             string msgidUnescaped = UnescapeString(msgId);
-            string finalString = string.IsNullOrEmpty(msgstrUnescaped) ? msgidUnescaped : msgstrUnescaped;
-            return finalString.Replace("\r\n", "\n").Replace("\n", "\r\n"); // Force CRLF
+            return string.IsNullOrEmpty(msgstrUnescaped) ? msgidUnescaped : msgstrUnescaped;
         }
 
         private static void AppendPoHeader(StringBuilder sb, string language)

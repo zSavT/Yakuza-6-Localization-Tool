@@ -100,15 +100,32 @@ namespace Yakuza6LocalizationTool
                         int maxBytes = int.Parse(parts[3]);
 
                         byte[] tradBytes = Encoding.UTF8.GetBytes(translatedText);
+                        int translatedByteCount = tradBytes.Length;
 
                         if (tradBytes.Length > maxBytes)
                         {
+                            List<byte> origBytes = new List<byte>();
+                            for (int i = 0; i < maxBytes; i++)
+                            {
+                                if (data[offset + i] == 0x00) break;
+                                origBytes.Add(data[offset + i]);
+                            }
+                            string originalText = Encoding.UTF8.GetString(origBytes.ToArray());
+
                             string warningMsg = $"[!] WARNING: Translation for offset 0x{hexOffset} in {Path.GetFileName(originalCmnPath)} exceeds {maxBytes} bytes. Truncating!";
                             Console.ForegroundColor = ConsoleColor.Yellow;
                             Console.WriteLine($"  {warningMsg}");
                             Console.ResetColor();
 
-                            if (!string.IsNullOrEmpty(warningsFilePath)) { try { File.AppendAllText(warningsFilePath, warningMsg + Environment.NewLine); } catch { } }
+                            if (!string.IsNullOrEmpty(warningsFilePath))
+                            {
+                                string detailedWarning = $"[WARNING] Truncated Text\r\n" +
+                                                         $"File: {originalCmnPath}\r\n" +
+                                                         $"Testo Originale ({origBytes.Count} byte / Max consentito: {maxBytes} byte): {originalText}\r\n" +
+                                                         $"Testo Tradotto  ({translatedByteCount} byte): {translatedText}\r\n" +
+                                                         "--------------------------------------------------\r\n";
+                                try { File.AppendAllText(warningsFilePath, detailedWarning); } catch { }
+                            }
 
                             while (Encoding.UTF8.GetByteCount(translatedText) > maxBytes)
                             {
