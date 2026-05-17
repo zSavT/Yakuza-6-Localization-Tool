@@ -1,0 +1,9 @@
+{
+  "gamePath": "",
+  "language": "it",
+  "dictionaryFile": "dictionary.json",
+  "skipTextures": false,
+  "cleanAll": false,
+  "autoYes": false,
+  "quietLogs": false
+}
