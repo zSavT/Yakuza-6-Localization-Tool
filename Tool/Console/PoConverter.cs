@@ -153,74 +153,18 @@ namespace PoConverter
 
         internal static void PoToJson(string inputFile, string outputFile, string? originalJsonFile, string? dictionaryFile)
         {
-            string[] lines = File.ReadAllLines(inputFile);
             string jsonString = !string.IsNullOrEmpty(originalJsonFile) ? File.ReadAllText(originalJsonFile) : "{}";
             JObject jsonObject = JObject.Parse(jsonString) ?? new JObject();
 
-            string? currentKey = null;
-            string? currentMsgId = null;
-            string? currentMsgStr = null;
-            string currentSection = "";
-            int lineNumber = 0;
-            int lastKeyLineNumber = 0;
-
-            foreach (string line in lines)
-            {
-                lineNumber++;
-                try
-                {
-                    string trimmedLine = line.Trim();
-
-                    if (trimmedLine.StartsWith("msgctxt"))
-                    {
-                        currentKey = ExtractString(trimmedLine);
-                        currentSection = "msgctxt";
-                        lastKeyLineNumber = lineNumber;
-                    }
-                    else if (trimmedLine.StartsWith("msgid"))
-                    {
-                        currentMsgId = ExtractString(trimmedLine);
-                        currentSection = "msgid";
-                    }
-                    else if (trimmedLine.StartsWith("msgstr"))
-                    {
-                        currentMsgStr = ExtractString(trimmedLine);
-                        currentSection = "msgstr";
-                    }
-                    else if (trimmedLine.StartsWith("\""))
-                    {
-                        if (currentSection == "msgid") currentMsgId += ExtractString(trimmedLine);
-                        else if (currentSection == "msgstr") currentMsgStr += ExtractString(trimmedLine);
-                    }
-                    else if (string.IsNullOrEmpty(trimmedLine) && currentKey != null)
-                    {
-                        SaveTranslation(jsonObject, currentKey, currentMsgId, currentMsgStr);
-                        currentKey = null;
-                        currentMsgId = null;
-                        currentMsgStr = null;
-                        currentSection = "";
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Pipeline.PrintError($"  [!] Error processing PO file at line {lineNumber} ({line}): {ex.Message}");
-                        // Reset the state to recover and continue with the next blocks
-                    currentKey = null;
-                    currentMsgId = null;
-                    currentMsgStr = null;
-                    currentSection = "";
-                }
-            }
-
-            if (currentKey != null)
+            foreach (var entry in ParsePoFile(inputFile))
             {
                 try
                 {
-                    SaveTranslation(jsonObject, currentKey, currentMsgId, currentMsgStr);
+                    SaveTranslation(jsonObject, entry.Key, entry.MsgId, entry.MsgStr);
                 }
                 catch (Exception ex)
                 {
-                    Pipeline.PrintError($"  [!] Error processing final PO block starting around line {lastKeyLineNumber}: {ex.Message}");
+                    Pipeline.PrintError($"  [!] Error processing PO block around line {entry.LineNumber}: {ex.Message}");
                 }
             }
 
@@ -241,10 +185,7 @@ namespace PoConverter
         {
             try
             {
-                string msgstr = UnescapeString(msgStr ?? string.Empty);
-                string msgid = UnescapeString(msgId ?? string.Empty);
-                string finalString = string.IsNullOrEmpty(msgstr) ? msgid : msgstr;
-                finalString = finalString.Replace("\r\n", "\n").Replace("\n", "\r\n"); // Force Windows line endings (CRLF)
+                string finalString = GetFinalTranslationText(msgId ?? string.Empty, msgStr ?? string.Empty);
                 string keyUnescaped = UnescapeString(key);
 
                 string[] pathParts = keyUnescaped.Split(new string[] { "||" }, StringSplitOptions.None);
@@ -342,16 +283,7 @@ namespace PoConverter
             StringBuilder poContent = new StringBuilder();
             List<List<string>> structures = GetStructures(dictionaryFile, inputFile);
 
-            // Add standard Gettext header
-            poContent.AppendLine("msgid \"\"");
-            poContent.AppendLine("msgstr \"\"");
-            poContent.AppendLine("\"Project-Id-Version: Yakuza 6 Translation\\n\"");
-            poContent.AppendLine("\"Last-Translator: SavT\\n\"");
-            poContent.AppendLine("\"MIME-Version: 1.0\\n\"");
-            poContent.AppendLine("\"Content-Type: text/plain; charset=UTF-8\\n\"");
-            poContent.AppendLine("\"Content-Transfer-Encoding: 8bit\\n\"");
-            poContent.AppendLine($"\"Language: {language}\\n\"");
-            poContent.AppendLine();
+            AppendPoHeader(poContent, language);
 
             var risultati = new List<(string Key, string Text)>();
 
@@ -394,15 +326,7 @@ namespace PoConverter
         {
             StringBuilder poContent = new StringBuilder();
             
-            poContent.AppendLine("msgid \"\"");
-            poContent.AppendLine("msgstr \"\"");
-            poContent.AppendLine("\"Project-Id-Version: Yakuza 6 Translation\\n\"");
-            poContent.AppendLine("\"Last-Translator: SavT\\n\"");
-            poContent.AppendLine("\"MIME-Version: 1.0\\n\"");
-            poContent.AppendLine("\"Content-Type: text/plain; charset=UTF-8\\n\"");
-            poContent.AppendLine("\"Content-Transfer-Encoding: 8bit\\n\"");
-            poContent.AppendLine($"\"Language: {language}\\n\"");
-            poContent.AppendLine();
+            AppendPoHeader(poContent, language);
 
             foreach (var kvp in dict)
             {
@@ -424,19 +348,42 @@ namespace PoConverter
         internal static Dictionary<string, string> PoToDict(string inputFile)
         {
             Dictionary<string, string> dict = new Dictionary<string, string>();
+            
+            foreach (var entry in ParsePoFile(inputFile))
+            {
+                dict[UnescapeString(entry.Key)] = GetFinalTranslationText(entry.MsgId, entry.MsgStr);
+            }
+            
+            return dict;
+        }
+
+        internal class PoEntry
+        {
+            public string Key { get; set; } = string.Empty;
+            public string MsgId { get; set; } = string.Empty;
+            public string MsgStr { get; set; } = string.Empty;
+            public int LineNumber { get; set; }
+        }
+
+        private static IEnumerable<PoEntry> ParsePoFile(string inputFile)
+        {
             string[] lines = File.ReadAllLines(inputFile);
             string? currentKey = null;
             string? currentMsgId = null;
             string? currentMsgStr = null;
             string currentSection = "";
+            int lineNumber = 0;
+            int lastKeyLineNumber = 0;
 
             foreach (string line in lines)
             {
+                lineNumber++;
                 string trimmedLine = line.Trim();
                 if (trimmedLine.StartsWith("msgctxt"))
                 {
                     currentKey = ExtractString(trimmedLine);
                     currentSection = "msgctxt";
+                    lastKeyLineNumber = lineNumber;
                 }
                 else if (trimmedLine.StartsWith("msgid"))
                 {
@@ -455,13 +402,7 @@ namespace PoConverter
                 }
                 else if (string.IsNullOrEmpty(trimmedLine) && currentKey != null)
                 {
-                    string msgstr = UnescapeString(currentMsgStr ?? string.Empty);
-                    string msgid = UnescapeString(currentMsgId ?? string.Empty);
-                    string finalString = string.IsNullOrEmpty(msgstr) ? msgid : msgstr;
-                    finalString = finalString.Replace("\r\n", "\n").Replace("\n", "\r\n");
-                    
-                    dict[UnescapeString(currentKey)] = finalString;
-
+                    yield return new PoEntry { Key = currentKey, MsgId = currentMsgId ?? "", MsgStr = currentMsgStr ?? "", LineNumber = lastKeyLineNumber };
                     currentKey = null;
                     currentMsgId = null;
                     currentMsgStr = null;
@@ -471,15 +412,29 @@ namespace PoConverter
             
             if (currentKey != null)
             {
-                string msgstr = UnescapeString(currentMsgStr ?? string.Empty);
-                string msgid = UnescapeString(currentMsgId ?? string.Empty);
-                string finalString = string.IsNullOrEmpty(msgstr) ? msgid : msgstr;
-                finalString = finalString.Replace("\r\n", "\n").Replace("\n", "\r\n");
-                
-                dict[UnescapeString(currentKey)] = finalString;
+                yield return new PoEntry { Key = currentKey, MsgId = currentMsgId ?? "", MsgStr = currentMsgStr ?? "", LineNumber = lastKeyLineNumber };
             }
+        }
 
-            return dict;
+        private static string GetFinalTranslationText(string msgId, string msgStr)
+        {
+            string msgstrUnescaped = UnescapeString(msgStr);
+            string msgidUnescaped = UnescapeString(msgId);
+            string finalString = string.IsNullOrEmpty(msgstrUnescaped) ? msgidUnescaped : msgstrUnescaped;
+            return finalString.Replace("\r\n", "\n").Replace("\n", "\r\n"); // Force CRLF
+        }
+
+        private static void AppendPoHeader(StringBuilder sb, string language)
+        {
+            sb.AppendLine("msgid \"\"");
+            sb.AppendLine("msgstr \"\"");
+            sb.AppendLine("\"Project-Id-Version: Yakuza 6 Translation\\n\"");
+            sb.AppendLine("\"Last-Translator: SavT\\n\"");
+            sb.AppendLine("\"MIME-Version: 1.0\\n\"");
+            sb.AppendLine("\"Content-Type: text/plain; charset=UTF-8\\n\"");
+            sb.AppendLine("\"Content-Transfer-Encoding: 8bit\\n\"");
+            sb.AppendLine($"\"Language: {language}\\n\"");
+            sb.AppendLine();
         }
     }
 }

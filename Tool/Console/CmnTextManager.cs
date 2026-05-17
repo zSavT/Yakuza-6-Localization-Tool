@@ -23,7 +23,7 @@ namespace Yakuza6LocalizationTool
             for (int i = 0; i < data.Length; i++)
             {
                 byte b = data[i];
-                if ((b >= 0x20 && b <= 0x7E) || b > 0x7F)
+                if ((b >= 0x20 && b <= 0x7E) || b > 0x7F || b == 0x0A || b == 0x0D || b == 0x09)
                 {
                     if (currentStr.Count == 0) startOffset = i;
                     currentStr.Add(b);
