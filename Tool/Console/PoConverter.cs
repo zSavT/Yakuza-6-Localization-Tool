@@ -73,6 +73,8 @@ namespace PoConverter
             Console.WriteLine("  -q, --quiet             Suppress output logs from external tools (reARMP, ParTool).");
             Console.WriteLine("  -d, --dict <path>       Specify a custom dictionary file (default: dictionary.json).");
             Console.WriteLine();
+            Console.WriteLine("Note: You can also use 'config.json' to set default paths and options permanently.");
+            Console.WriteLine();
             Console.WriteLine("Raw PoConverter Usage: PoConverter <input.json> <output.po> json2po");
             Console.WriteLine("Usage for po2json: PoConverter <input.po> <output.json> po2json <original.json>");
             Console.WriteLine("Example json2po: PoConverter ui_text.bin.json test1.po json2po");

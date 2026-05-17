@@ -368,6 +368,28 @@ namespace PoConverter
             autoYes = false;
             dictFile = "dictionary.json";
 
+            string configPath = "config.json";
+            if (File.Exists(configPath))
+            {
+                try
+                {
+                    string configText = File.ReadAllText(configPath);
+                    JObject config = JObject.Parse(configText);
+
+                    if (config["gamePath"] != null && !string.IsNullOrWhiteSpace(config["gamePath"]?.ToString())) folderPath = config["gamePath"]?.ToString();
+                    if (config["language"] != null && !string.IsNullOrWhiteSpace(config["language"]?.ToString())) language = config["language"]?.ToString() ?? "it";
+                    if (config["dictionaryFile"] != null && !string.IsNullOrWhiteSpace(config["dictionaryFile"]?.ToString())) dictFile = config["dictionaryFile"]?.ToString() ?? "dictionary.json";
+                    if (config["skipTextures"] != null) skipTextures = (bool)config["skipTextures"];
+                    if (config["cleanAll"] != null) cleanAll = (bool)config["cleanAll"];
+                    if (config["autoYes"] != null) autoYes = (bool)config["autoYes"];
+                    if (config["quietLogs"] != null) QuietLogs = (bool)config["quietLogs"];
+                }
+                catch (Exception ex)
+                {
+                    PrintWarning($"\n[!] Warning: Failed to parse config.json: {ex.Message}");
+                }
+            }
+
             if (args != null)
             {
                 for (int i = 0; i < args.Length; i++)
