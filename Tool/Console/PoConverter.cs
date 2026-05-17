@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using System.Text.RegularExpressions;
 
 namespace PoConverter
 {
@@ -69,6 +70,7 @@ namespace PoConverter
             Console.WriteLine("  -l, --lang <lang>       Set the language code for PO headers (default: it).");
             Console.WriteLine("  -c, --clean-all         Delete workspace and og files after recreation, keeping only output.");
             Console.WriteLine("  -y, --yes               Skip confirmation prompts and auto-exit.");
+            Console.WriteLine("  -q, --quiet             Suppress output logs from external tools (reARMP, ParTool).");
             Console.WriteLine("  -d, --dict <path>       Specify a custom dictionary file (default: dictionary.json).");
             Console.WriteLine();
             Console.WriteLine("Raw PoConverter Usage: PoConverter <input.json> <output.po> json2po");
@@ -332,7 +334,7 @@ namespace PoConverter
             }
         }
 
-        internal static void JsonToPo(string inputFile, string outputFile, string? dictionaryFile, string language = "it")
+        internal static int JsonToPo(string inputFile, string outputFile, string? dictionaryFile, string language = "it")
         {
             List<string> lines = new List<string>();
             string jsonString = File.ReadAllText(inputFile);
@@ -359,14 +361,125 @@ namespace PoConverter
                 ExtractValues(jsonObject, structure, new List<string>(), risultati);
             }
 
+            var validResults = new List<(string Key, string Text)>();
             foreach (var item in risultati)
             {
+                if (string.IsNullOrWhiteSpace(item.Text)) continue;
+                
+                var letters = item.Text.Where(char.IsLetter).ToList();
+                bool hasLetters = letters.Any();
+                bool isOnlyJapanese = hasLetters && letters.All(c => (c >= '\u3040' && c <= '\u30ff') || (c >= '\u3400' && c <= '\u4dbf') || (c >= '\u4e00' && c <= '\u9fff'));
+                
+                bool isInternalId = item.Text.Contains("_") || item.Text.Contains(".dds") || item.Text.Contains(".bin") || item.Text.Contains("[IK]");
+                bool isThreeBytesWithSpace = Encoding.UTF8.GetByteCount(item.Text) == 3 && item.Text.Contains(" ");
+                bool hasRepeatedChars = Regex.IsMatch(item.Text, @"(.)\1{4,}");
+
+                if (isOnlyJapanese || isInternalId || isThreeBytesWithSpace || hasRepeatedChars) continue;
+                
+                validResults.Add(item);
                 poContent.AppendLine($"msgctxt \"{EscapeString(item.Key)}\"");
                 poContent.AppendLine($"msgid \"{EscapeString(item.Text)}\"");
                 poContent.AppendLine($"msgstr \"\"");
                 poContent.AppendLine();
             }
+
+            if (validResults.Count == 0) return 0;
+
+            Directory.CreateDirectory(Path.GetDirectoryName(outputFile)!);
             File.WriteAllText(outputFile, poContent.ToString());
+            return validResults.Count;
+        }
+
+        internal static void DictToPo(Dictionary<string, string> dict, string outputFile, string language = "it")
+        {
+            StringBuilder poContent = new StringBuilder();
+            
+            poContent.AppendLine("msgid \"\"");
+            poContent.AppendLine("msgstr \"\"");
+            poContent.AppendLine("\"Project-Id-Version: Yakuza 6 Translation\\n\"");
+            poContent.AppendLine("\"Last-Translator: SavT\\n\"");
+            poContent.AppendLine("\"MIME-Version: 1.0\\n\"");
+            poContent.AppendLine("\"Content-Type: text/plain; charset=UTF-8\\n\"");
+            poContent.AppendLine("\"Content-Transfer-Encoding: 8bit\\n\"");
+            poContent.AppendLine($"\"Language: {language}\\n\"");
+            poContent.AppendLine();
+
+            foreach (var kvp in dict)
+            {
+                string[] parts = kvp.Key.Split('_');
+                if (parts.Length >= 4 && parts[0] == "Offset" && parts[2] == "Len")
+                {
+                    poContent.AppendLine($"#. Max bytes: {parts[3]}");
+                }
+                
+                poContent.AppendLine($"msgctxt \"{EscapeString(kvp.Key)}\"");
+                poContent.AppendLine($"msgid \"{EscapeString(kvp.Value)}\"");
+                poContent.AppendLine($"msgstr \"\"");
+                poContent.AppendLine();
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(outputFile)!);
+            File.WriteAllText(outputFile, poContent.ToString());
+        }
+
+        internal static Dictionary<string, string> PoToDict(string inputFile)
+        {
+            Dictionary<string, string> dict = new Dictionary<string, string>();
+            string[] lines = File.ReadAllLines(inputFile);
+            string? currentKey = null;
+            string? currentMsgId = null;
+            string? currentMsgStr = null;
+            string currentSection = "";
+
+            foreach (string line in lines)
+            {
+                string trimmedLine = line.Trim();
+                if (trimmedLine.StartsWith("msgctxt"))
+                {
+                    currentKey = ExtractString(trimmedLine);
+                    currentSection = "msgctxt";
+                }
+                else if (trimmedLine.StartsWith("msgid"))
+                {
+                    currentMsgId = ExtractString(trimmedLine);
+                    currentSection = "msgid";
+                }
+                else if (trimmedLine.StartsWith("msgstr"))
+                {
+                    currentMsgStr = ExtractString(trimmedLine);
+                    currentSection = "msgstr";
+                }
+                else if (trimmedLine.StartsWith("\""))
+                {
+                    if (currentSection == "msgid") currentMsgId += ExtractString(trimmedLine);
+                    else if (currentSection == "msgstr") currentMsgStr += ExtractString(trimmedLine);
+                }
+                else if (string.IsNullOrEmpty(trimmedLine) && currentKey != null)
+                {
+                    string msgstr = UnescapeString(currentMsgStr ?? string.Empty);
+                    string msgid = UnescapeString(currentMsgId ?? string.Empty);
+                    string finalString = string.IsNullOrEmpty(msgstr) ? msgid : msgstr;
+                    finalString = finalString.Replace("\r\n", "\n").Replace("\n", "\r\n");
+                    
+                    dict[UnescapeString(currentKey)] = finalString;
+
+                    currentKey = null;
+                    currentMsgId = null;
+                    currentMsgStr = null;
+                    currentSection = "";
+                }
+            }
+            
+            if (currentKey != null)
+            {
+                string msgstr = UnescapeString(currentMsgStr ?? string.Empty);
+                string msgid = UnescapeString(currentMsgId ?? string.Empty);
+                string finalString = string.IsNullOrEmpty(msgstr) ? msgid : msgstr;
+                finalString = finalString.Replace("\r\n", "\n").Replace("\n", "\r\n");
+                
+                dict[UnescapeString(currentKey)] = finalString;
+            }
+
+            return dict;
         }
     }
 }

@@ -12,7 +12,8 @@ Questo strumento automatizza l'estrazione, la traduzione e l'iniezione di testi 
   - [Flusso Logico e Architettura](#flusso-logico-e-architettura)
     - [1. `Pipeline.cs` - L'Orchestratore](#1-pipelinecs---lorchestratore)
     - [2. `PoConverter.cs` - Il Parser dei Testi](#2-poconvertercs---il-parser-dei-testi)
-    - [3. Struttura del `dictionary.json`](#3-struttura-del-dictionaryjson)
+    - [3. `CmnTextManager.cs` - Lo Scanner Binario](#3-cmntextmanagercs---lo-scanner-binario)
+    - [4. Struttura del `dictionary.json`](#4-struttura-del-dictionaryjson)
   - [Dipendenze Esterne e Ringraziamenti](#dipendenze-esterne-e-ringraziamenti)
 
 
@@ -40,6 +41,7 @@ Questo strumento automatizza l'estrazione, la traduzione e l'iniezione di testi 
    - Il tool inietterà i tuoi testi tradotti nei file `.json` e ricreerà i file `.bin` tramite `reARMP`.
    - Copierà le tue texture modificate e re-impacchetterà il file `ui.par` finale tramite `ParTool`.
 3. Prendi il contenuto generato in `Yakuza 6 - Patch\output` e incollalo direttamente nella cartella di gioco per vedere la tua mod in azione!
+4. **Nota:** Se un testo iniettato nei file `.cmn` supera il limite massimo di byte, il tool lo troncherà in modo sicuro e annoterà i dettagli in un file `warnings.txt` all'interno della cartella `Yakuza 6 - Patch`.
 
 ### Uso Avanzato (Argomenti da riga di comando)
 Puoi avviare il tool da terminale o tramite uno script `.bat` usando queste opzioni per automatizzare tutto:
@@ -51,6 +53,7 @@ Puoi avviare il tool da terminale o tramite uno script `.bat` usando queste opzi
 - `-l "CODE"`, `--lang "CODE"`: Cambia la lingua dell'header nei file Gettext (es. `en`, `es`, `fr`). Il default è `it`.
 - `-c`, `--clean-all`: Alla fine della Fase 2, elimina tutte le cartelle di lavoro (`og file`, `workspace`, ecc.) mantenendo SOLO `output`.
 - `-y`, `--yes`: Salta tutte le domande di conferma Y/N e chiude in automatico alla fine.
+- `-q`, `--quiet`: Nasconde i log di output dei tool esterni (reARMP, ParTool).
 - `-d "PATH"`, `--dict "PATH"`: Specifica un file dizionario personalizzato (default: `dictionary.json`).
 
 **Esempio (script .bat):**
@@ -65,17 +68,17 @@ Questa classe gestisce il routing dei file e l'esecuzione dei tool esterni (`Par
 
 - **Inizializzazione**: Carica `dictionary.json` per creare due HashSet dei file consentiti: testi (`.bin`) e texture (`.dds`).
 - **Estrazione (Fase 1)**:
-  1. Esegue `ParTool.exe extract` per scompattare `ui.par`.
+  1. Esegue `ParTool.exe extract` per scompattare `ui.par`, `talk.par` e automaticamente tutti i file `.par` trovati all'interno della cartella `auth`.
   2. Scansiona i file nella cartella del gioco.
   3. Copia tutto l'albero originale in `og file` per conservare i dati base non modificati.
   4. Se un file rientra nel dizionario, lo copia anche in `workspace`.
-  5. Per i file `.bin`, invoca `reARMP.exe` per generare il JSON, e successivamente chiama `PoConverter.JsonToPo` per estrarre le stringhe in un comodo file `.po`.
+  5. Per i file `.bin`, invoca `reARMP.exe` per generare il JSON, e successivamente chiama `PoConverter.JsonToPo` per estrarre le stringhe in un comodo file `.po`. Per i file `.cmn.bin`, utilizza lo scanner binario interno.
 - **Ricreazione (Fase 2)**:
   1. Copia l'intero albero dei file originali da `og file` in `output`.
   2. Itera sui file `.po` tradotti nel `workspace`, chiamando `PoConverter.PoToJson` per aggiornare i JSON originali.
   3. Invoca `reARMP.exe` sul JSON tradotto per compilare il nuovo binario, sostituisce il vecchio `.bin` in `output` e sposta il JSON aggiornato in `converted json`.
   4. Copia le texture `.dds` modificate dal workspace in `output`, aggirando eventuali flag di "Sola Lettura".
-  5. Avvia `ParTool.exe create` sulla cartella `output\data\ui.par.unpack` per generare un archivio `ui.par` impacchettato e pronto all'uso, cancellando poi la cartella temporanea.
+  5. Avvia `ParTool.exe create` sulle cartelle estratte per generare archivi `.par` impacchettati e pronti all'uso, cancellando poi le cartelle temporanee.
   6. Pulisce la cartella `output` eliminando tutti i file `.bin` non previsti dal dizionario, mantenendo l'archivio pulito e pronto per la mod.
 
 ### 2. `PoConverter.cs` - Il Parser dei Testi
@@ -84,7 +87,10 @@ Gestisce la conversione bidirezionale tra l'output JSON di reARMP e il formato s
 - **`JsonToPo`**: Usa un algoritmo ricorsivo (`ExtractValues`) per navigare l'albero JSON usando percorsi dinamici (con jolly `*`) definiti in `dictionary.json`. Scrive le stringhe trovate associando il percorso al `msgctxt` e il testo al `msgid`, effettuando l'escape dei caratteri (`\r\n`).
 - **`PoToJson`**: Legge il file `.po` riga per riga, supportando le stringhe multi-riga. Usa un blocco `try-catch` robusto che previene il crash in caso di sintassi PO errata, segnalando la riga all'utente e proseguendo. Recupera il percorso JSON dal `msgctxt`, trova il token esatto e lo sovrascrive. Scrive infine il file JSON forzando ritorni a capo LF e indentazione a 2 spazi per renderlo digeribile a reARMP.
 
-### 3. Struttura del `dictionary.json`
+### 3. `CmnTextManager.cs` - Lo Scanner Binario
+Uno scanner binario grezzo personalizzato per i file delle cutscene `.cmn`. Legge i file `.bin` byte per byte per estrarre le stringhe traducibili senza dipendere da decompilatori esterni, filtrando automaticamente gli ID interni del motore, stringhe ripetitive e i testi di debug puramente giapponesi. Durante la ricreazione, inietta in modo sicuro il testo tradotto nell'offset di memoria esatto, troncandolo se supera il limite di byte originale per prevenire la corruzione del file.
+
+### 4. Struttura del `dictionary.json`
 Il file dizionario indica al tool quali file elaborare e dove trovare il testo all'interno dei JSON. È diviso in due sezioni principali:
 
 ```json
