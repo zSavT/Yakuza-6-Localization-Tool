@@ -42,7 +42,7 @@ This tool automates the extraction, translation, and injection of text (`.bin`) 
    - It will rebuild the `.bin` files via `reARMP`.
    - It will repack your modified textures and files back into a new `ui.par` via `ParTool`.
 3. Grab the generated files from `Yakuza 6 - Patch\output` and copy them into your game folder to see your mods in-game!
-4. **Note:** If any injected text in `.cmn` files exceeds the maximum byte limit, the tool will safely truncate it and log the details in a `warnings.txt` file inside the `Yakuza 6 - Patch` folder.
+4. **Note:** If any injected text in `.cmn` files exceeds the maximum byte limit, the tool will safely truncate it and log the detailed original vs translated byte-count info in a `warnings.txt` file inside the `Yakuza 6 - Patch` folder. A comprehensive dashboard will summarize the execution at the end!
 
 ### Advanced Usage (Command Line Arguments)
 You can run the tool from the command line or via a `.bat` script using these options to automate the process:
@@ -59,6 +59,22 @@ You can run the tool from the command line or via a `.bat` script using these op
 
 **Example (.bat script):**
 `PoConverter.exe -g "C:\Steam\steamapps\common\Yakuza 6" -r -t -y -d "my_dictionary.json"`
+
+### Using `config.json`
+Instead of passing arguments every time, you can edit the `config.json` file in the same folder as the tool. The program will read these defaults automatically:
+
+```json
+{
+  "gamePath": "C:\\SteamLibrary\\steamapps\\common\\Yakuza 6 - The Song of Life",
+  "language": "it",
+  "dictionaryFile": "dictionary.json",
+  "skipTextures": false,
+  "cleanAll": false,
+  "autoYes": true,
+  "quietLogs": true
+}
+```
+*Arguments passed via the command line will override these defaults.*
 
 
 

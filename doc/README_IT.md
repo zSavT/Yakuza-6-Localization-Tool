@@ -9,6 +9,7 @@ Questo strumento automatizza l'estrazione, la traduzione e l'iniezione di testi 
     - [Fase 2: Traduzione e Modifica](#fase-2-traduzione-e-modifica)
     - [Fase 3: Ricreazione e Iniezione](#fase-3-ricreazione-e-iniezione)
     - [Uso Avanzato (Argomenti da riga di comando)](#uso-avanzato-argomenti-da-riga-di-comando)
+    - [Utilizzare `config.json`](#utilizzare-configjson)
   - [Flusso Logico e Architettura](#flusso-logico-e-architettura)
     - [1. `Pipeline.cs` - L'Orchestratore](#1-pipelinecs---lorchestratore)
     - [2. `PoConverter.cs` - Il Parser dei Testi](#2-poconvertercs---il-parser-dei-testi)
@@ -41,7 +42,7 @@ Questo strumento automatizza l'estrazione, la traduzione e l'iniezione di testi 
    - Il tool inietterà i tuoi testi tradotti nei file `.json` e ricreerà i file `.bin` tramite `reARMP`.
    - Copierà le tue texture modificate e re-impacchetterà il file `ui.par` finale tramite `ParTool`.
 3. Prendi il contenuto generato in `Yakuza 6 - Patch\output` e incollalo direttamente nella cartella di gioco per vedere la tua mod in azione!
-4. **Nota:** Se un testo iniettato nei file `.cmn` supera il limite massimo di byte, il tool lo troncherà in modo sicuro e annoterà i dettagli in un file `warnings.txt` all'interno della cartella `Yakuza 6 - Patch`.
+4. **Nota:** Se un testo iniettato nei file `.cmn` supera il limite massimo di byte, il tool lo troncherà in modo sicuro e annoterà i dettagli (con il conteggio dei byte originali e tradotti) in un file `warnings.txt` all'interno della cartella `Yakuza 6 - Patch`. Un comodo cruscotto riassuntivo ti mostrerà i risultati a fine elaborazione!
 
 ### Uso Avanzato (Argomenti da riga di comando)
 Puoi avviare il tool da terminale o tramite uno script `.bat` usando queste opzioni per automatizzare tutto:
@@ -58,6 +59,22 @@ Puoi avviare il tool da terminale o tramite uno script `.bat` usando queste opzi
 
 **Esempio (script .bat):**
 `PoConverter.exe -g "C:\Steam\steamapps\common\Yakuza 6" -r -t -y -d "mio_dizionario.json"`
+
+### Utilizzare `config.json`
+Invece di inserire il percorso o passare gli argomenti a ogni avvio, puoi modificare il file `config.json` incluso nella cartella del programma. Il tool leggerà questi valori di default automaticamente:
+
+```json
+{
+  "gamePath": "C:\\SteamLibrary\\steamapps\\common\\Yakuza 6 - The Song of Life",
+  "language": "it",
+  "dictionaryFile": "dictionary.json",
+  "skipTextures": false,
+  "cleanAll": false,
+  "autoYes": true,
+  "quietLogs": true
+}
+```
+*Gli argomenti passati da riga di comando avranno comunque la precedenza su questo file.*
 
 
 
