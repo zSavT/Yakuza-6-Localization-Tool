@@ -1,4 +1,6 @@
-# Yakuza 6 Localization Tool
+# Yakuza 6 Localization Tool [![Static Badge](https://img.shields.io/badge/Download-light_green)](https://github.com/zSavT/Yakuza-6-Localization-Tool/releases)
+
+
 
 This tool automates the extraction, translation, and injection of text (`.bin`) and texture (`.dds`) files for Yakuza 6, utilizing `reARMP` and `ParTool`.
 
