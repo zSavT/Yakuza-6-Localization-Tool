@@ -36,20 +36,20 @@ namespace PoConverter
         {
             string inputFile = args[0];
             string outputFile = args[1];
-            string typeConvertion = args[2];
+            string typeConversion = args[2];
             string? originalJsonFile = args.Length > 3 ? args[3] : null;
             string? dictionaryFile = args.Length > 4 ? args[4] : null;
 
 
-            if (!checkArgs(inputFile, outputFile, typeConvertion, originalJsonFile, dictionaryFile))
+            if (!CheckArgs(inputFile, outputFile, typeConversion, originalJsonFile, dictionaryFile))
             {
                 return;
             }
-            if (typeConvertion == "po2json")
+            if (typeConversion == "po2json")
             {
                 PoToJson(inputFile, outputFile, originalJsonFile, dictionaryFile);
             }
-            else if (typeConvertion == "json2po")
+            else if (typeConversion == "json2po")
             {
                 JsonToPo(inputFile, outputFile, dictionaryFile);
             }
@@ -89,7 +89,7 @@ namespace PoConverter
             
         }
 
-        private static bool checkArgs(string inputFile, string outputFile, string typeConvertion, string? originalJsonFile, string? dictionaryFile)
+        private static bool CheckArgs(string inputFile, string outputFile, string typeConversion, string? originalJsonFile, string? dictionaryFile)
         {
             if (!File.Exists(inputFile))
             {
@@ -101,12 +101,12 @@ namespace PoConverter
                 Pipeline.PrintError($"[!] File {outputFile} already exists.");
                 return false;
             }
-            if (typeConvertion != "po2json" && typeConvertion != "json2po")
+            if (typeConversion != "po2json" && typeConversion != "json2po")
             {
-                Pipeline.PrintError($"[!] Type convertion {typeConvertion} is not valid.");
+                Pipeline.PrintError($"[!] Type convertion {typeConversion} is not valid.");
                 return false;
             }
-            if (typeConvertion == "po2json" && !File.Exists(originalJsonFile))
+            if (typeConversion == "po2json" && !File.Exists(originalJsonFile))
             {
                 Pipeline.PrintError($"[!] For po2json, you must provide the original JSON file as the 4th argument. File {originalJsonFile} does not exist.");
                 return false;
@@ -122,14 +122,18 @@ namespace PoConverter
         // ------------
         // STRUCTURE PARSING
         // ------------
-        private static List<List<string>> GetStructures(string? dictionaryFile, string? targetFile)
+        private static List<List<string>> GetStructures(string? dictionaryFile, string? targetFile, JObject? cachedDict = null)
         {
             List<List<string>> structures = new List<List<string>> { new List<string> { "", "text" } }; // Fallback structure
 
-            if (!string.IsNullOrEmpty(dictionaryFile) && File.Exists(dictionaryFile) && !string.IsNullOrEmpty(targetFile))
+            if (!string.IsNullOrEmpty(targetFile))
             {
-                string dictJson = File.ReadAllText(dictionaryFile);
-                JObject? dict = JObject.Parse(dictJson);
+                JObject? dict = cachedDict;
+                if (dict == null && !string.IsNullOrEmpty(dictionaryFile) && File.Exists(dictionaryFile))
+                {
+                    string dictJson = File.ReadAllText(dictionaryFile);
+                    dict = JObject.Parse(dictJson);
+                }
                 string fileName = Path.GetFileName(targetFile) ?? string.Empty;
 
                 if (dict != null)
@@ -249,27 +253,42 @@ namespace PoConverter
 
         private static string UnescapeString(string text)
         {
-            return text.Replace("\\n", "\n")
-                       .Replace("\\r", "\r")
-                       .Replace("\\\"", "\"")
-                       .Replace("\\\\", "\\");
+            var sb = new StringBuilder(text.Length);
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (text[i] == '\\' && i + 1 < text.Length)
+                {
+                    switch (text[i + 1])
+                    {
+                        case 'n': sb.Append('\n'); i++; break;
+                        case 'r': sb.Append('\r'); i++; break;
+                        case '"': sb.Append('"'); i++; break;
+                        case '\\': sb.Append('\\'); i++; break;
+                        default: sb.Append(text[i]); break;
+                    }
+                }
+                else
+                {
+                    sb.Append(text[i]);
+                }
+            }
+            return sb.ToString();
         }
 
-        private static void ExtractValues(JToken? currentToken, List<string> remainingPath, List<string> currentPath, List<(string Key, string Text)> risultati)
+        private static void ExtractValues(JToken? currentToken, List<string> structure, int structureIndex, List<string> currentPath, List<(string Key, string Text)> results)
         {
             if (currentToken == null) return;
 
-            if (remainingPath.Count == 0)
+            if (structureIndex >= structure.Count)
             {
                 if (currentToken.Type == JTokenType.String)
                 {
-                    risultati.Add((string.Join("||", currentPath), currentToken.ToString()));
+                    results.Add((string.Join("||", currentPath), currentToken.ToString()));
                 }
                 return;
             }
 
-            string nextKey = remainingPath[0];
-            List<string> nextRemaining = remainingPath.Skip(1).ToList();
+            string nextKey = structure[structureIndex];
 
             if (nextKey == "*")
             {
@@ -277,8 +296,9 @@ namespace PoConverter
                 {
                     foreach (var prop in obj.Properties())
                     {
-                        var newPath = new List<string>(currentPath) { prop.Name };
-                        ExtractValues(prop.Value, nextRemaining, newPath, risultati);
+                        currentPath.Add(prop.Name);
+                        ExtractValues(prop.Value, structure, structureIndex + 1, currentPath, results);
+                        currentPath.RemoveAt(currentPath.Count - 1);
                     }
                 }
             }
@@ -286,8 +306,9 @@ namespace PoConverter
             {
                 if (currentToken is JObject obj && obj.ContainsKey(nextKey))
                 {
-                    var newPath = new List<string>(currentPath) { nextKey };
-                    ExtractValues(obj[nextKey], nextRemaining, newPath, risultati);
+                    currentPath.Add(nextKey);
+                    ExtractValues(obj[nextKey], structure, structureIndex + 1, currentPath, results);
+                    currentPath.RemoveAt(currentPath.Count - 1);
                 }
             }
         }
@@ -295,26 +316,26 @@ namespace PoConverter
         // ------------
         // JSON TO PO
         // ------------
-        internal static int JsonToPo(string inputFile, string outputFile, string? dictionaryFile, string language = "it")
+        internal static int JsonToPo(string inputFile, string outputFile, string? dictionaryFile, string language = "it", JObject? cachedDict = null)
         {
             List<string> lines = new List<string>();
             string jsonString = File.ReadAllText(inputFile);
             JObject jsonObject = JObject.Parse(jsonString) ?? new JObject();
             StringBuilder poContent = new StringBuilder();
-            List<List<string>> structures = GetStructures(dictionaryFile, inputFile);
+            List<List<string>> structures = GetStructures(dictionaryFile, inputFile, cachedDict);
 
             AppendPoHeader(poContent, language);
 
-            var risultati = new List<(string Key, string Text)>();
+            var results = new List<(string Key, string Text)>();
 
             foreach (var structure in structures)
             {
                 // Start recursion directly from the root object
-                ExtractValues(jsonObject, structure, new List<string>(), risultati);
+                ExtractValues(jsonObject, structure, 0, new List<string>(), results);
             }
 
             var validResults = new List<(string Key, string Text)>();
-            foreach (var item in risultati)
+            foreach (var item in results)
             {
                 if (!IsValidTranslationString(item.Text)) continue;
                 
@@ -343,7 +364,28 @@ namespace PoConverter
             var letters = text.Where(char.IsLetter).ToList();
             bool hasLetters = letters.Any();
 
-            if (requireSpaceAndLetters && (!hasSpace || !hasLetters)) return false;
+            if (requireSpaceAndLetters)
+            {
+                if (hasSpace)
+                {
+                    if (!hasLetters) return false;
+                }
+                else
+                {
+                    // For single words (no spaces)
+                    if (text.Length < 2) return false; // Skip single characters (usually variables)
+
+                    // Skip camelCase (e.g., "myVariable", "getPlayer")
+                    if (Regex.IsMatch(text, @"[a-z][A-Z]")) return false;
+
+                    // Skip strings with digits (e.g., "Btn01", "Text2")
+                    if (text.Any(char.IsDigit)) return false;
+
+                    // Skip technical strings with code-like characters
+                    char[] codeChars = { '(', ')', '{', '}', '[', ']', '<', '>', ';', '=', '+', '*', '/', '&', '|', '%', '$', '@', '^' };
+                    if (text.Any(c => codeChars.Contains(c))) return false;
+                }
+            }
 
             bool isOnlyJapanese = hasLetters && letters.All(c => (c >= '\u3040' && c <= '\u30ff') || (c >= '\u3400' && c <= '\u4dbf') || (c >= '\u4e00' && c <= '\u9fff'));
             if (isOnlyJapanese) return false;

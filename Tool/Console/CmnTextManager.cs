@@ -106,9 +106,7 @@ namespace Yakuza6LocalizationTool
                             string originalText = Encoding.UTF8.GetString(origBytes.ToArray());
 
                             string warningMsg = $"[!] WARNING: Translation for offset 0x{hexOffset} in {Path.GetFileName(originalCmnPath)} exceeds {maxBytes} bytes. Truncating!";
-                            Console.ForegroundColor = ConsoleColor.Yellow;
-                            Console.WriteLine($"  {warningMsg}");
-                            Console.ResetColor();
+                            global::PoConverter.Pipeline.PrintWarning($"  {warningMsg}");
 
                             if (!string.IsNullOrEmpty(warningsFilePath))
                             {
@@ -135,7 +133,10 @@ namespace Yakuza6LocalizationTool
                         for (int i = tradBytes.Length; i < maxBytes; i++)
                             data[offset + i] = 0x00;
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        global::PoConverter.Pipeline.PrintWarning($"  [!] Warning: Failed to inject text at {contextId}: {ex.Message}");
+                    }
                 }
             }
 
