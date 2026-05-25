@@ -71,10 +71,20 @@ Invece di inserire il percorso o passare gli argomenti a ogni avvio, puoi modifi
   "skipTextures": false,
   "cleanAll": false,
   "autoYes": true,
-  "quietLogs": true
+  "quietLogs": true,
+  "custom-db": ""
 }
 ```
 *Gli argomenti passati da riga di comando avranno comunque la precedenza su questo file.*
+
+### Modalità Custom DB
+Se hai la necessità di elaborare un insieme specifico di file `.bin` situati in una cartella personalizzata (ad esempio, una cartella indipendente di database), puoi specificarne il percorso sotto la chiave `"custom-db"` in `config.json`.
+
+Quando `"custom-db"` è configurato e valorizzato:
+- Il percorso del gioco (`gamePath`) viene completamente ignorato (non è richiesto, richiesto in input o convalidato).
+- **Estrazione (Fase 1)**: Il tool scansionerà la cartella personalizzata in modo ricorsivo alla ricerca di file `.bin`, li copierà in `og file`, li estrarrà in `.json` con `reARMP.exe` e convertirà le stringhe in file di traduzione `.po` nella cartella `workspace`.
+- **Ricreazione (Fase 2)**: Il tool inietterà i file `.po` modificati dal workspace nei file `.json` e li ricompilerà in `.bin` tramite `reARMP.exe` nella cartella `output`, saltando completamente l'estrazione o la ricompressione degli archivi `.par`.
+
 
 
 

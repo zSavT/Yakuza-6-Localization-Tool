@@ -73,10 +73,20 @@ Instead of passing arguments every time, you can edit the `config.json` file in 
   "skipTextures": false,
   "cleanAll": false,
   "autoYes": true,
-  "quietLogs": true
+  "quietLogs": true,
+  "custom-db": ""
 }
 ```
 *Arguments passed via the command line will override these defaults.*
+
+### Custom DB Mode
+If you need to process a specific set of `.bin` files located in a custom folder (for instance, a standalone database directory), you can specify its path under the `"custom-db"` key in `config.json`.
+
+When `"custom-db"` is configured and has a value:
+- The game path (`gamePath`) is completely bypassed (it is not required, requested, or validated).
+- **Extraction (Phase 1)**: The tool will scan the custom folder recursively for `.bin` files, copy them to `og file`, extract them to `.json` with `reARMP.exe`, and convert their strings into `.po` translation files inside the `workspace` directory.
+- **Recreation (Phase 2)**: The tool will inject modified `.po` files from the workspace into the `.json` files and compile them back to `.bin` via `reARMP.exe` into the `output` directory, skipping any `.par` archive extraction or repacking.
+
 
 
 
