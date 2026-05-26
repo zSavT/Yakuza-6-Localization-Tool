@@ -37,6 +37,7 @@ namespace PoConverter
             public required Dictionary<string, List<string>> FolderFilters { get; init; }
             public JObject? CachedDict { get; init; }
             public string? CustomDbPath { get; init; }
+            public required bool SplitSoundAuth { get; init; }
         }
 
         // ------------
@@ -66,7 +67,7 @@ namespace PoConverter
             WarningCount = 0;
             QuietLogs = false;
 
-            ParseArguments(args, out string? folderPath, out string? choice, out bool skipTextures, out string language, out bool cleanAll, out bool autoYes, out string dictFile, out string? customDbPath);
+            ParseArguments(args, out string? folderPath, out string? choice, out bool skipTextures, out string language, out bool cleanAll, out bool autoYes, out string dictFile, out string? customDbPath, out bool splitSoundAuth);
 
             PrintHeader("==================================================================");
             PrintHeader("   Yakuza 6 Localization Tool - Ultimate Automation Pipeline");
@@ -141,6 +142,7 @@ namespace PoConverter
                 FolderFilters = folderFilters,
                 CachedDict = cachedDict,
                 CustomDbPath = customDbPath,
+                SplitSoundAuth = splitSoundAuth,
             };
 
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -226,7 +228,7 @@ namespace PoConverter
             int targetCount = 0;
             foreach (var binPath in files)
             {
-                if (ProcessExtractionFile(binPath, ctx))
+                if (ProcessExtractionFile(binPath, ctx, files))
                 {
                     targetCount++;
                 }
@@ -557,8 +559,8 @@ namespace PoConverter
                 Recursive = true
             });
 
-            // auth/*.par
-            string authDirPath = Path.Combine(ctx.FolderPath, "data", "auth");
+            // auth/e/*.par
+            string authDirPath = Path.Combine(ctx.FolderPath, "data", "auth", "e");
             if (Directory.Exists(authDirPath))
             {
                 foreach (string authPar in Directory.GetFiles(authDirPath, "*.par"))
@@ -567,6 +569,21 @@ namespace PoConverter
                     {
                         ParPath = authPar,
                         UnpackDir = authPar + ".unpack",
+                        Recursive = true
+                    });
+                }
+            }
+
+            // hact/e/*.par
+            string hactDirPath = Path.Combine(ctx.FolderPath, "data", "hact", "e");
+            if (Directory.Exists(hactDirPath))
+            {
+                foreach (string hactPar in Directory.GetFiles(hactDirPath, "*.par"))
+                {
+                    parFiles.Add(new ParFileInfo
+                    {
+                        ParPath = hactPar,
+                        UnpackDir = hactPar + ".unpack",
                         Recursive = true
                     });
                 }
@@ -620,8 +637,8 @@ namespace PoConverter
                 });
             }
 
-            // auth/*.par
-            string outputAuthDirPath = Path.Combine(ctx.OutputDir, "data", "auth");
+            // auth/e/*.par
+            string outputAuthDirPath = Path.Combine(ctx.OutputDir, "data", "auth", "e");
             if (Directory.Exists(outputAuthDirPath))
             {
                 foreach (string outputAuthUnpack in Directory.GetDirectories(outputAuthDirPath, "*.par.unpack"))
@@ -629,9 +646,25 @@ namespace PoConverter
                     string fileName = Path.GetFileName(outputAuthUnpack).Replace(".unpack", "");
                     parFiles.Add(new ParFileInfo
                     {
-                        ParPath = Path.Combine(ctx.FolderPath, "data", "auth", fileName),
+                        ParPath = Path.Combine(ctx.FolderPath, "data", "auth", "e", fileName),
                         UnpackDir = outputAuthUnpack,
-                        SuccessLocation = Path.Combine("output", "data", "auth")
+                        SuccessLocation = Path.Combine("output", "data", "auth", "e")
+                    });
+                }
+            }
+
+            // hact/e/*.par
+            string outputHactDirPath = Path.Combine(ctx.OutputDir, "data", "hact", "e");
+            if (Directory.Exists(outputHactDirPath))
+            {
+                foreach (string outputHactUnpack in Directory.GetDirectories(outputHactDirPath, "*.par.unpack"))
+                {
+                    string fileName = Path.GetFileName(outputHactUnpack).Replace(".unpack", "");
+                    parFiles.Add(new ParFileInfo
+                    {
+                        ParPath = Path.Combine(ctx.FolderPath, "data", "hact", "e", fileName),
+                        UnpackDir = outputHactUnpack,
+                        SuccessLocation = Path.Combine("output", "data", "hact", "e")
                     });
                 }
             }
@@ -734,7 +767,7 @@ namespace PoConverter
             if (choice == "2") Directory.CreateDirectory(convertedJsonDir);
         }
 
-        private static void ParseArguments(string[] args, out string? folderPath, out string? choice, out bool skipTextures, out string language, out bool cleanAll, out bool autoYes, out string dictFile, out string? customDbPath)
+        private static void ParseArguments(string[] args, out string? folderPath, out string? choice, out bool skipTextures, out string language, out bool cleanAll, out bool autoYes, out string dictFile, out string? customDbPath, out bool splitSoundAuth)
         {
             folderPath = null;
             choice = null;
@@ -744,6 +777,7 @@ namespace PoConverter
             autoYes = false;
             dictFile = "dictionary.json";
             customDbPath = null;
+            splitSoundAuth = true;
 
             string configPath = "config.json";
             if (File.Exists(configPath))
@@ -818,6 +852,10 @@ namespace PoConverter
                         case "-q":
                         case "--quiet":
                             QuietLogs = true;
+                            break;
+                        case "-ns":
+                        case "--no-split":
+                            splitSoundAuth = false;
                             break;
                         case "-d":
                         case "--dict":
@@ -1026,7 +1064,8 @@ namespace PoConverter
         {
             string uiParUnpackDir = Path.Combine(ctx.FolderPath, "data", "ui.par.unpack");
             string talkParUnpackDir = Path.Combine(ctx.FolderPath, "data", "talk.par.unpack");
-            string authDirPath = Path.Combine(ctx.FolderPath, "data", "auth");
+            string authDirPath = Path.Combine(ctx.FolderPath, "data", "auth", "e");
+            string hactDirPath = Path.Combine(ctx.FolderPath, "data", "hact", "e");
 
             var files = new List<string>();
             string dbPath = Path.Combine(ctx.FolderPath, "data", "db", "e");
@@ -1052,6 +1091,15 @@ namespace PoConverter
                 foreach (string authParUnpackDir in Directory.GetDirectories(authDirPath, "*.par.unpack"))
                 {
                     files.AddRange(Directory.GetFiles(authParUnpackDir, "*.*", SearchOption.AllDirectories)
+                        .Where(f => !f.EndsWith(".bin.json")));
+                }
+            }
+
+            if (Directory.Exists(hactDirPath))
+            {
+                foreach (string hactParUnpackDir in Directory.GetDirectories(hactDirPath, "*.par.unpack"))
+                {
+                    files.AddRange(Directory.GetFiles(hactParUnpackDir, "*.*", SearchOption.AllDirectories)
                         .Where(f => !f.EndsWith(".bin.json")));
                 }
             }
@@ -1099,7 +1147,7 @@ namespace PoConverter
             return "";
         }
 
-        private static bool ShouldProcessFile(string filename, string relPath, HashSet<string> allowedBinFiles, HashSet<string> allowedTextureFiles, HashSet<string> allowedCmnFiles, Dictionary<string, List<string>> folderFilters, out bool isTargetBin, out bool isTargetTex, out bool isTargetCmn)
+        private static bool ShouldProcessFile(string filename, string relPath, HashSet<string> allowedBinFiles, HashSet<string> allowedTextureFiles, HashSet<string> allowedCmnFiles, Dictionary<string, List<string>> folderFilters, List<string> allFiles, out bool isTargetBin, out bool isTargetTex, out bool isTargetCmn)
         {
             isTargetBin = IsFileAllowed(filename, allowedBinFiles);
             isTargetTex = IsFileAllowed(filename, allowedTextureFiles);
@@ -1121,25 +1169,35 @@ namespace PoConverter
             {
                 isTargetBin = false;
                 isTargetCmn = false;
-                isTargetTex = false;
             }
 
             bool isNeutralAllowed = folderFilters.Keys.Any(k => pathParts.Contains(k, StringComparer.OrdinalIgnoreCase) && !k.Equals("hact", StringComparison.OrdinalIgnoreCase)) || isAuth;
 
-            if (isTargetBin || isTargetCmn || isTargetTex) 
+            if (isTargetTex)
+            {
+                if (isInEFolder) return true;
+
+                bool hasEVariant = allFiles.Any(f => 
+                    Path.GetFileName(f).Equals(filename, StringComparison.OrdinalIgnoreCase) && 
+                    (f.Contains("\\e\\", StringComparison.OrdinalIgnoreCase) || f.Contains("/e/", StringComparison.OrdinalIgnoreCase)));
+
+                return !hasEVariant;
+            }
+
+            if (isTargetBin || isTargetCmn) 
             {
                 return isInEFolder || isNeutralAllowed;
             }
             return false;
         }
 
-        private static bool ProcessExtractionFile(string binPath, PipelineContext ctx)
+        private static bool ProcessExtractionFile(string binPath, PipelineContext ctx, List<string> allFiles)
         {
             string filename = Path.GetFileName(binPath);
             string fileDir = Path.GetDirectoryName(binPath) ?? "";
             string relPath = GetRelativePath(fileDir);
 
-            if (!ShouldProcessFile(filename, relPath, ctx.AllowedBinFiles, ctx.AllowedTextureFiles, ctx.AllowedCmnFiles, ctx.FolderFilters, out bool isTargetBin, out bool isTargetTex, out bool isTargetCmn))
+            if (!ShouldProcessFile(filename, relPath, ctx.AllowedBinFiles, ctx.AllowedTextureFiles, ctx.AllowedCmnFiles, ctx.FolderFilters, allFiles, out bool isTargetBin, out bool isTargetTex, out bool isTargetCmn))
             {
                 return false;
             }
@@ -1215,7 +1273,7 @@ namespace PoConverter
                                 kept = true;
 
                                 // DIVIDE AUTOMATICAMENTE SOUND_AUTH.PO
-                                if (filename.Equals("sound_auth.bin", StringComparison.OrdinalIgnoreCase))
+                                if (ctx.SplitSoundAuth && filename.Equals("sound_auth.bin", StringComparison.OrdinalIgnoreCase))
                                 {
                                     string splitDir = Path.Combine(currentWorkspaceDir, "sound_auth_split");
                                     PrintStep($"  -> [PoSplitter] Splitting sound_auth.po into smaller files...");

@@ -77,6 +77,7 @@ namespace PoConverter
             Console.WriteLine("  -c, --clean-all         Delete workspace and og files after recreation, keeping only output.");
             Console.WriteLine("  -y, --yes               Skip confirmation prompts and auto-exit.");
             Console.WriteLine("  -q, --quiet             Suppress output logs from external tools (reARMP, ParTool).");
+            Console.WriteLine("  -ns, --no-split         Disable automatic splitting of sound_auth.po file.");
             Console.WriteLine("  -d, --dict <path>       Specify a custom dictionary file (default: dictionary.json).");
             Console.WriteLine();
             Console.WriteLine("Note: You can also use 'config.json' to set default paths and options permanently.");
