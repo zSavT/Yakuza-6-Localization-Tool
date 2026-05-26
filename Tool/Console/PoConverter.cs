@@ -249,7 +249,8 @@ namespace PoConverter
             return text.Replace("\\", "\\\\")
                        .Replace("\"", "\\\"")
                        .Replace("\r", "\\r")
-                       .Replace("\n", "\\n");
+                       .Replace("\n", "\\n")
+                       .Replace("\t", "\\t");
         }
 
         private static string UnescapeString(string text)
@@ -263,6 +264,7 @@ namespace PoConverter
                     {
                         case 'n': sb.Append('\n'); i++; break;
                         case 'r': sb.Append('\r'); i++; break;
+                        case 't': sb.Append('\t'); i++; break;
                         case '"': sb.Append('"'); i++; break;
                         case '\\': sb.Append('\\'); i++; break;
                         default: sb.Append(text[i]); break;

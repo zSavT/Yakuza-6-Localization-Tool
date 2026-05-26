@@ -4,13 +4,15 @@
 
 This tool automates the extraction, translation, and injection of text (`.bin`) and texture (`.dds`) files for Yakuza 6, utilizing `reARMP` and `ParTool`.
 
-- [Yakuza 6 Localization Tool](#yakuza-6-localization-tool)
+- [Yakuza 6 Localization Tool ](#yakuza-6-localization-tool-)
   - [How to Use the Program](#how-to-use-the-program)
     - [Prerequisites](#prerequisites)
     - [Step 1: Extraction](#step-1-extraction)
     - [Step 2: Translation \& Editing](#step-2-translation--editing)
     - [Step 3: Recreation \& Injection](#step-3-recreation--injection)
     - [Advanced Usage (Command Line Arguments)](#advanced-usage-command-line-arguments)
+    - [Using `config.json`](#using-configjson)
+    - [Custom DB Mode](#custom-db-mode)
   - [Logical Flow \& Architecture](#logical-flow--architecture)
     - [1. `Pipeline.cs` - The Orchestrator](#1-pipelinecs---the-orchestrator)
     - [2. `PoConverter.cs` - The Text Parser](#2-poconvertercs---the-text-parser)
@@ -44,7 +46,7 @@ This tool automates the extraction, translation, and injection of text (`.bin`) 
    - It will rebuild the `.bin` files via `reARMP`.
    - It will repack your modified textures and files back into a new `ui.par` via `ParTool`.
 3. Grab the generated files from `Yakuza 6 - Patch\output` and copy them into your game folder to see your mods in-game!
-4. **Note:** If any injected text in `.cmn` files exceeds the maximum byte limit, the tool will safely truncate it and log the detailed original vs translated byte-count info in a `warnings.txt` file inside the `Yakuza 6 - Patch` folder. A comprehensive dashboard will summarize the execution at the end!
+4. **Note:** If any injected text in `.cmn` files exceeds the maximum byte limit, the tool will safely truncate it and log the detailed original vs translated byte-count info in a `warnings.txt` file inside the `Yakuza 6 - Patch` folder. Any pipeline errors will also be logged in an `errors.txt` file in the same location. A comprehensive dashboard will summarize the execution at the end!
 
 ### Advanced Usage (Command Line Arguments)
 You can run the tool from the command line or via a `.bat` script using these options to automate the process:

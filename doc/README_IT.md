@@ -42,7 +42,7 @@ Questo strumento automatizza l'estrazione, la traduzione e l'iniezione di testi 
    - Il tool inietterà i tuoi testi tradotti nei file `.json` e ricreerà i file `.bin` tramite `reARMP`.
    - Copierà le tue texture modificate e re-impacchetterà il file `ui.par` finale tramite `ParTool`.
 3. Prendi il contenuto generato in `Yakuza 6 - Patch\output` e incollalo direttamente nella cartella di gioco per vedere la tua mod in azione!
-4. **Nota:** Se un testo iniettato nei file `.cmn` supera il limite massimo di byte, il tool lo troncherà in modo sicuro e annoterà i dettagli (con il conteggio dei byte originali e tradotti) in un file `warnings.txt` all'interno della cartella `Yakuza 6 - Patch`. Un comodo cruscotto riassuntivo ti mostrerà i risultati a fine elaborazione!
+4. **Nota:** Se un testo iniettato nei file `.cmn` supera il limite massimo di byte, il tool lo troncherà in modo sicuro e annoterà i dettagli (con il conteggio dei byte originali e tradotti) in un file `warnings.txt` all'interno della cartella `Yakuza 6 - Patch`. Eventuali errori di esecuzione verranno registrati in un file `errors.txt` nella stessa posizione. Un comodo cruscotto riassuntivo ti mostrerà i risultati a fine elaborazione!
 
 ### Uso Avanzato (Argomenti da riga di comando)
 Puoi avviare il tool da terminale o tramite uno script `.bat` usando queste opzioni per automatizzare tutto:

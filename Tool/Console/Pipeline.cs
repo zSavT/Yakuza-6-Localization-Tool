@@ -26,6 +26,7 @@ namespace PoConverter
             public required string OutputDir { get; init; }
             public required string ConvertedJsonDir { get; init; }
             public required string WarningsFile { get; init; }
+            public required string ErrorsFile { get; init; }
             public required string Language { get; init; }
             public required string DictFile { get; init; }
             public required string RearmpCmd { get; init; }
@@ -120,7 +121,7 @@ namespace PoConverter
                 return;
             }
 
-            InitializeDirectories(choice, autoYes, out string patchDir, out string ogFileDir, out string ogJsonDir, out string workspaceDir, out string outputDir, out string convertedJsonDir, out string warningsFile);
+            InitializeDirectories(choice, autoYes, out string patchDir, out string ogFileDir, out string ogJsonDir, out string workspaceDir, out string outputDir, out string convertedJsonDir, out string warningsFile, out string errorsFile);
 
             var ctx = new PipelineContext
             {
@@ -132,6 +133,7 @@ namespace PoConverter
                 OutputDir = outputDir,
                 ConvertedJsonDir = convertedJsonDir,
                 WarningsFile = warningsFile,
+                ErrorsFile = errorsFile,
                 Language = language,
                 DictFile = dictFile,
                 RearmpCmd = "reARMP.exe",
@@ -189,7 +191,14 @@ namespace PoConverter
                 PrintInfo($"    - Warnings                 : 0");
 
             if (ErrorCount > 0)
-                PrintError($"    - Errors                   : {ErrorCount}");
+            {
+                string errorMsg = $"    - Errors                   : {ErrorCount}";
+                if (File.Exists(errorsFile)) errorMsg += " (see errors.txt)";
+
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine(errorMsg);
+                Console.ResetColor();
+            }
             else
                 PrintInfo($"    - Errors                   : 0");
             PrintHeader($"==================================================================");
@@ -710,7 +719,7 @@ namespace PoConverter
         // ------------
         // INITIALIZATION & ARGS
         // ------------
-        private static void InitializeDirectories(string choice, bool autoYes, out string patchDir, out string ogFileDir, out string ogJsonDir, out string workspaceDir, out string outputDir, out string convertedJsonDir, out string warningsFile)
+        private static void InitializeDirectories(string choice, bool autoYes, out string patchDir, out string ogFileDir, out string ogJsonDir, out string workspaceDir, out string outputDir, out string convertedJsonDir, out string warningsFile, out string errorsFile)
         {
             patchDir = Path.Combine(Environment.CurrentDirectory, "Yakuza 6 - Patch");
             ogFileDir = Path.Combine(patchDir, "og file");
@@ -719,6 +728,7 @@ namespace PoConverter
             outputDir = Path.Combine(patchDir, "output");
             convertedJsonDir = Path.Combine(patchDir, "converted json");
             warningsFile = Path.Combine(patchDir, "warnings.txt");
+            errorsFile = Path.Combine(patchDir, "errors.txt");
 
             if (choice == "1")
             {
@@ -737,6 +747,7 @@ namespace PoConverter
                         SafeDeleteDirectory(ogFileDir);
                         SafeDeleteDirectory(ogJsonDir);
                         SafeDeleteDirectory(workspaceDir);
+                        SafeDeleteFile(errorsFile);
                     }
                 }
             }
@@ -757,6 +768,7 @@ namespace PoConverter
                         SafeDeleteDirectory(outputDir);
                         SafeDeleteDirectory(convertedJsonDir);
                         SafeDeleteFile(warningsFile);
+                        SafeDeleteFile(errorsFile);
                     }
                 }
             }
@@ -1431,7 +1443,22 @@ namespace PoConverter
         // ------------
         // CONSOLE LOGGING
         // ------------
-        internal static void PrintError(string msg) { ErrorCount++; Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(msg); Console.ResetColor(); }
+        internal static void PrintError(string msg) 
+        { 
+            ErrorCount++; 
+            Console.ForegroundColor = ConsoleColor.Red; 
+            Console.WriteLine(msg); 
+            Console.ResetColor(); 
+            try
+            {
+                string patchDir = Path.Combine(Environment.CurrentDirectory, "Yakuza 6 - Patch");
+                if (Directory.Exists(patchDir))
+                {
+                    File.AppendAllText(Path.Combine(patchDir, "errors.txt"), msg + Environment.NewLine);
+                }
+            }
+            catch { }
+        }
         internal static void PrintWarning(string msg) { WarningCount++; Console.ForegroundColor = ConsoleColor.Yellow; Console.WriteLine(msg); Console.ResetColor(); }
         internal static void PrintSuccess(string msg) { Console.ForegroundColor = ConsoleColor.Green; Console.WriteLine(msg); Console.ResetColor(); }
         internal static void PrintInfo(string msg) { Console.ForegroundColor = ConsoleColor.Cyan; Console.WriteLine(msg); Console.ResetColor(); }
