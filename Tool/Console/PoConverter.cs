@@ -375,9 +375,17 @@ namespace PoConverter
 
         private static readonly HashSet<string> ValidTwoLetterWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "am", "an", "as", "at", "be", "by", "do", "go", "he", "if", "in", "is", "it", "me", "my", "no", "of", "on", "or", "so", "to", "up", "us", "we",
-            "ad", "al", "ai", "da", "di", "ed", "fa", "fu", "ha", "ho", "il", "la", "le", "li", "lo", "ma", "mi", "ne", "re", "sa", "se", "si", "sì", "su", "te", "ti", "tu", "va", "vi",
-            "ok", "oh", "ah", "eh", "uh", "hi", "ex"
+            "no", "ok", "oh", "ah", "eh", "uh", "hi", "ha", "ho"
+        };
+
+        private static readonly HashSet<string> ValidThreeLetterWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            // English common words (real standalone words only)
+            "are", "but", "not", "you", "all", "any", "can", "one", "out", "day", "get", "how", "man", "new", "now", "old", "see", "two", "way", "who", "boy", "cat", "dog", "run", "yes", "cap", "cup", "hat", "bag", "box", "car", "fly", "cry", "try", "sky", "key", "bed", "red", "big", "bad", "hot", "cow", "cut", "add", "end", "eat", "far", "sun", "sea", "ice", "air", "war", "law", "age", "job", "son", "kid", "dad", "mom", "sir", "god", "lie", "ask", "put", "let", "set", "sat", "met", "got", "ran", "saw", "did", "may", "own", "off", "too", "yet", "low", "top", "fit", "sad", "mad", "use", "hey", "wow", "bye", "why",
+            // Japanese Romanized Names / Surnames
+            "oka", "ren", "aki", "ken", "yui", "ryo", "han", "oda", "abe", "ito", "uno", "ego", "jin", "kai", "ran",
+            // Gaming & Technical Acronyms (often standalone in lists or UI)
+            "exp", "hp", "mp", "lvl", "max", "min", "cpu", "gpu", "hud", "app", "dev", "log", "msg", "txt", "bin", "dds", "par", "cmn", "win", "npc", "fps", "rpg", "map", "key", "nav", "sfx", "bgm", "vfx", "com"
         };
 
         // ------------
@@ -426,6 +434,9 @@ namespace PoConverter
                     // Whitelist for 2-character words (prevents 2-char random noise like "xp", "qw")
                     if (letterSeq.Length == 2 && !ValidTwoLetterWords.Contains(letterSeq)) return false;
 
+                    // Whitelist for 3-character words (prevents sequential technical noise like "PAE", "XAF")
+                    if (letterSeq.Length == 3 && !ValidThreeLetterWords.Contains(letterSeq)) return false;
+
                     // Vowel check for Latin words (prevents consonant-only gibberish like "sft", "qwr")
                     var latinLetters = letterSeq.Where(c => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')).ToList();
                     if (latinLetters.Any() && !latinLetters.Any(c => "aeiouyAEIOUY".Contains(c))) return false;
@@ -443,7 +454,7 @@ namespace PoConverter
                     if (text.Any(char.IsDigit)) return false;
 
                     // Skip technical strings with code-like characters
-                    char[] codeChars = { '(', ')', '{', '}', '[', ']', '<', '>', ';', '=', '+', '*', '/', '&', '|', '%', '$', '@', '^' };
+                    char[] codeChars = { '(', ')', '{', '}', '[', ']', '<', '>', ';', '=', '+', '*', '/', '&', '|', '%', '$', '@', '^', '`' };
                     if (text.Any(c => codeChars.Contains(c))) return false;
                 }
             }
