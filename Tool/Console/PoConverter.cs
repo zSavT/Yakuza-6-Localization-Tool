@@ -392,9 +392,27 @@ namespace PoConverter
         // ------------
         // TEXT VALIDATION
         // ------------
+        private static bool ContainsJapaneseOrChinese(string text)
+        {
+            foreach (char c in text)
+            {
+                if ((c >= '\u3040' && c <= '\u30FF') || // Hiragana & Katakana
+                    (c >= '\u3400' && c <= '\u4DBF') || // CJK Unified Ideographs Extension A
+                    (c >= '\u4E00' && c <= '\u9FFF') || // CJK Unified Ideographs
+                    (c >= '\uF900' && c <= '\uFAFF') || // CJK Compatibility Ideographs
+                    (c >= '\uFF00' && c <= '\uFFEF'))   // Halfwidth and Fullwidth Forms
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         internal static bool IsValidTranslationString(string text, bool requireSpaceAndLetters = false)
         {
             if (string.IsNullOrWhiteSpace(text)) return false;
+
+            if (ContainsJapaneseOrChinese(text)) return false;
 
             var letters = text.Where(char.IsLetter).ToList();
             if (letters.Count < 2) return false; // Require at least 2 letters in any valid string (prevents single-letter noise with spaces like " A", " N", "P ")
@@ -406,20 +424,21 @@ namespace PoConverter
                 {
                     bool isLatin = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
                     bool isAccent = (c >= '\u00C0' && c <= '\u00FF');
-                    bool isJapanese = (c >= '\u3040' && c <= '\u30FF') || (c >= '\u3400' && c <= '\u4DBF') || (c >= '\u4E00' && c <= '\u9FFF');
 
-                    if (!isLatin && !isAccent && !isJapanese)
+                    if (!isLatin && !isAccent)
                     {
                         return false;
                     }
                 }
             }
 
-            // 2. Letter Ratio Check: at least 50% of the string must be actual letters to filter out symbol-heavy noise (e.g. ">b; =")
-            double ratio = (double)letters.Count / text.Length;
-            if (ratio < 0.50) return false;
-
             bool hasSpace = text.Contains(" ");
+
+            // 2. Letter Ratio Check: at least 50% of the string must be actual letters to filter out symbol-heavy noise.
+            // If the string has spaces, we reduce the threshold to 30% to allow sentences with numbers, punctuation, and formatting.
+            double ratio = (double)letters.Count / text.Length;
+            double requiredRatio = hasSpace ? 0.30 : 0.50;
+            if (ratio < requiredRatio) return false;
 
             if (requireSpaceAndLetters)
             {
@@ -478,7 +497,7 @@ namespace PoConverter
         // ------------
         // DICTIONARY & PO CONVERSION
         // ------------
-        internal static void DictToPo(Dictionary<string, string> dict, string outputFile, string language = "it")
+        internal static void DictToPo(Dictionary<string, string> dict, string outputFile, string language = "it", bool extractSystemStrings = true)
         {
             StringBuilder poContent = new StringBuilder();
             
@@ -486,20 +505,31 @@ namespace PoConverter
 
             foreach (var kvp in dict)
             {
+                string val = kvp.Value.Trim();
+                bool isSystemString = false;
+                if (val.Length > 0 && !val.Contains(" "))
+                {
+                    char firstLetter = val.FirstOrDefault(char.IsLetter);
+                    if (firstLetter != default(char) && char.IsLower(firstLetter))
+                    {
+                        isSystemString = true;
+                    }
+                }
+
+                if (!extractSystemStrings && isSystemString)
+                {
+                    continue;
+                }
+
                 string[] parts = kvp.Key.Split('_');
                 if (parts.Length >= 4 && parts[0] == "Offset" && parts[2] == "Len")
                 {
                     poContent.AppendLine($"#. Max bytes: {parts[3]}");
                 }
 
-                string val = kvp.Value.Trim();
-                if (val.Length > 0 && !val.Contains(" "))
+                if (isSystemString)
                 {
-                    char firstLetter = val.FirstOrDefault(char.IsLetter);
-                    if (firstLetter != default(char) && char.IsLower(firstLetter))
-                    {
-                        poContent.AppendLine("#. WARNING: Might be a system string/identifier (do not translate).");
-                    }
+                    poContent.AppendLine("#. WARNING: Might be a system string/identifier (do not translate).");
                 }
                 
                 poContent.AppendLine($"msgctxt \"{EscapeString(kvp.Key)}\"");
@@ -511,12 +541,24 @@ namespace PoConverter
             File.WriteAllText(outputFile, poContent.ToString());
         }
 
-        internal static Dictionary<string, string> PoToDict(string inputFile)
+        internal static Dictionary<string, string> PoToDict(string inputFile, bool extractSystemStrings = true)
         {
             Dictionary<string, string> dict = new Dictionary<string, string>();
             
             foreach (var entry in ParsePoFile(inputFile))
             {
+                string msgid = UnescapeString(entry.MsgId).Trim();
+                if (!extractSystemStrings)
+                {
+                    if (msgid.Length > 0 && !msgid.Contains(" "))
+                    {
+                        char firstLetter = msgid.FirstOrDefault(char.IsLetter);
+                        if (firstLetter != default(char) && char.IsLower(firstLetter))
+                        {
+                            continue;
+                        }
+                    }
+                }
                 dict[UnescapeString(entry.Key)] = GetFinalTranslationText(entry.MsgId, entry.MsgStr);
             }
             

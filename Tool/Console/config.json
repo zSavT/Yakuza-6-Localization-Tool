@@ -6,5 +6,6 @@
   "cleanAll": false,
   "autoYes": false,
   "quietLogs": false,
-  "splitSoundAuth": false
+  "splitSoundAuth": false,
+  "extractSystemStrings": false
 }

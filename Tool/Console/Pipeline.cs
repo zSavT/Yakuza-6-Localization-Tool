@@ -38,6 +38,7 @@ namespace PoConverter
             public JObject? CachedDict { get; init; }
             public string? CustomDbPath { get; init; }
             public required bool SplitSoundAuth { get; init; }
+            public required bool ExtractSystemStrings { get; init; }
         }
 
         // ------------
@@ -67,7 +68,7 @@ namespace PoConverter
             WarningCount = 0;
             QuietLogs = false;
 
-            ParseArguments(args, out string? folderPath, out string? choice, out bool skipTextures, out string language, out bool cleanAll, out bool autoYes, out string dictFile, out string? customDbPath, out bool splitSoundAuth);
+            ParseArguments(args, out string? folderPath, out string? choice, out bool skipTextures, out string language, out bool cleanAll, out bool autoYes, out string dictFile, out string? customDbPath, out bool splitSoundAuth, out bool extractSystemStrings);
 
             PrintHeader("==================================================================");
             PrintHeader("   Yakuza 6 Localization Tool - Ultimate Automation Pipeline");
@@ -143,6 +144,7 @@ namespace PoConverter
                 CachedDict = cachedDict,
                 CustomDbPath = customDbPath,
                 SplitSoundAuth = splitSoundAuth,
+                ExtractSystemStrings = extractSystemStrings,
             };
 
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -767,7 +769,7 @@ namespace PoConverter
             if (choice == "2") Directory.CreateDirectory(convertedJsonDir);
         }
 
-        private static void ParseArguments(string[] args, out string? folderPath, out string? choice, out bool skipTextures, out string language, out bool cleanAll, out bool autoYes, out string dictFile, out string? customDbPath, out bool splitSoundAuth)
+        private static void ParseArguments(string[] args, out string? folderPath, out string? choice, out bool skipTextures, out string language, out bool cleanAll, out bool autoYes, out string dictFile, out string? customDbPath, out bool splitSoundAuth, out bool extractSystemStrings)
         {
             folderPath = null;
             choice = null;
@@ -778,6 +780,7 @@ namespace PoConverter
             dictFile = "dictionary.json";
             customDbPath = null;
             splitSoundAuth = true;
+            extractSystemStrings = true;
 
             string configPath = "config.json";
             if (File.Exists(configPath))
@@ -797,10 +800,12 @@ namespace PoConverter
                     cleanAll = ParseConfigBool(config, "cleanAll", cleanAll);
                     autoYes = ParseConfigBool(config, "autoYes", autoYes);
                     QuietLogs = ParseConfigBool(config, "quietLogs", QuietLogs);
-
-
+                    extractSystemStrings = ParseConfigBool(config, "extractSystemStrings", extractSystemStrings);
+                    splitSoundAuth = ParseConfigBool(config, "splitSoundAuth", splitSoundAuth);
+ 
+ 
                     var knownKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                        { "gamePath", "language", "dictionaryFile", "skipTextures", "cleanAll", "autoYes", "quietLogs", "custom-db" };
+                        { "gamePath", "language", "dictionaryFile", "skipTextures", "cleanAll", "autoYes", "quietLogs", "custom-db", "extractSystemStrings", "splitSoundAuth" };
                     foreach (var prop in config.Properties())
                     {
                         if (!knownKeys.Contains(prop.Name))
@@ -1233,7 +1238,7 @@ namespace PoConverter
                     if (texts.Count > 0)
                     {
                         Directory.CreateDirectory(currentWorkspaceDir);
-                        PoConverter.DictToPo(texts, poPath, ctx.Language);
+                        PoConverter.DictToPo(texts, poPath, ctx.Language, ctx.ExtractSystemStrings);
                         PrintSuccess($"  [OK] Created PO file: {relPath}\\{Path.GetFileName(poPath)}");
                         kept = true;
                     }
@@ -1340,7 +1345,7 @@ namespace PoConverter
 
                 try
                 {
-                    var translatedTexts = PoConverter.PoToDict(poPath);
+                    var translatedTexts = PoConverter.PoToDict(poPath, ctx.ExtractSystemStrings);
                     Yakuza6LocalizationTool.CmnTextManager.InjectTextsAndSave(originalCmnPath, outputCmnPath, translatedTexts, ctx.WarningsFile);
                     PrintSuccess($"  [OK] CMN file updated successfully in {relPath}.");
                     return true;
