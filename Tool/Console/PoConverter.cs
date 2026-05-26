@@ -340,6 +340,17 @@ namespace PoConverter
                 if (!IsValidTranslationString(item.Text)) continue;
                 
                 validResults.Add(item);
+
+                string val = item.Text.Trim();
+                if (val.Length > 0 && !val.Contains(" "))
+                {
+                    char firstLetter = val.FirstOrDefault(char.IsLetter);
+                    if (firstLetter != default(char) && char.IsLower(firstLetter))
+                    {
+                        poContent.AppendLine("#. WARNING: Might be a system string/identifier (do not translate).");
+                    }
+                }
+                
                 poContent.AppendLine($"msgctxt \"{EscapeString(item.Key)}\"");
                 poContent.AppendLine($"msgid \"{EscapeString(item.Text)}\"");
                 poContent.AppendLine($"msgstr \"\"");
@@ -353,6 +364,22 @@ namespace PoConverter
             return validResults.Count;
         }
 
+        private static readonly HashSet<string> CodeKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "true", "false", "null", "void", "int", "float", "double", "string", "bool", "char",
+            "class", "struct", "import", "return", "break", "continue", "if", "else", "for", "while",
+            "switch", "case", "default", "public", "private", "protected", "internal", "static",
+            "new", "this", "base", "undefined", "var", "const", "let", "function", "fn",
+            "func", "def", "and", "or", "not", "xor"
+        };
+
+        private static readonly HashSet<string> ValidTwoLetterWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "am", "an", "as", "at", "be", "by", "do", "go", "he", "if", "in", "is", "it", "me", "my", "no", "of", "on", "or", "so", "to", "up", "us", "we",
+            "ad", "al", "ai", "da", "di", "ed", "fa", "fu", "ha", "ho", "il", "la", "le", "li", "lo", "ma", "mi", "ne", "re", "sa", "se", "si", "sì", "su", "te", "ti", "tu", "va", "vi",
+            "ok", "oh", "ah", "eh", "uh", "hi", "ex"
+        };
+
         // ------------
         // TEXT VALIDATION
         // ------------
@@ -360,20 +387,54 @@ namespace PoConverter
         {
             if (string.IsNullOrWhiteSpace(text)) return false;
 
-            bool hasSpace = text.Contains(" ");
             var letters = text.Where(char.IsLetter).ToList();
-            bool hasLetters = letters.Any();
+            if (letters.Count < 2) return false; // Require at least 2 letters in any valid string (prevents single-letter noise with spaces like " A", " N", "P ")
+
+            // 1. Alphabet Range Check: Filter out letters from foreign/exotic alphabets (e.g. Cyrillic, Armenian)
+            foreach (char c in text)
+            {
+                if (char.IsLetter(c))
+                {
+                    bool isLatin = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+                    bool isAccent = (c >= '\u00C0' && c <= '\u00FF');
+                    bool isJapanese = (c >= '\u3040' && c <= '\u30FF') || (c >= '\u3400' && c <= '\u4DBF') || (c >= '\u4E00' && c <= '\u9FFF');
+
+                    if (!isLatin && !isAccent && !isJapanese)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            // 2. Letter Ratio Check: at least 50% of the string must be actual letters to filter out symbol-heavy noise (e.g. ">b; =")
+            double ratio = (double)letters.Count / text.Length;
+            if (ratio < 0.50) return false;
+
+            bool hasSpace = text.Contains(" ");
 
             if (requireSpaceAndLetters)
             {
-                if (hasSpace)
-                {
-                    if (!hasLetters) return false;
-                }
-                else
+                if (!hasSpace)
                 {
                     // For single words (no spaces)
-                    if (text.Length < 2) return false; // Skip single characters (usually variables)
+                    
+                    // Extract only letters to validate the word itself (prevents noise like "yv:")
+                    string letterSeq = new string(text.Where(char.IsLetter).ToArray());
+
+                    if (letterSeq.Length < 2) return false; // Single letters are not valid standalone words
+
+                    // Whitelist for 2-character words (prevents 2-char random noise like "xp", "qw")
+                    if (letterSeq.Length == 2 && !ValidTwoLetterWords.Contains(letterSeq)) return false;
+
+                    // Vowel check for Latin words (prevents consonant-only gibberish like "sft", "qwr")
+                    var latinLetters = letterSeq.Where(c => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')).ToList();
+                    if (latinLetters.Any() && !latinLetters.Any(c => "aeiouyAEIOUY".Contains(c))) return false;
+
+                    // Skip words with three identical letters in a row (e.g., "aaa", "zzz")
+                    if (Regex.IsMatch(text, @"([a-zA-Z])\1\1")) return false;
+
+                    // Skip code keywords
+                    if (CodeKeywords.Contains(text)) return false;
 
                     // Skip camelCase (e.g., "myVariable", "getPlayer")
                     if (Regex.IsMatch(text, @"[a-z][A-Z]")) return false;
@@ -387,7 +448,7 @@ namespace PoConverter
                 }
             }
 
-            bool isOnlyJapanese = hasLetters && letters.All(c => (c >= '\u3040' && c <= '\u30ff') || (c >= '\u3400' && c <= '\u4dbf') || (c >= '\u4e00' && c <= '\u9fff'));
+            bool isOnlyJapanese = letters.All(c => (c >= '\u3040' && c <= '\u30ff') || (c >= '\u3400' && c <= '\u4dbf') || (c >= '\u4e00' && c <= '\u9fff'));
             if (isOnlyJapanese) return false;
 
             bool isInternalId = text.Contains("_") || text.Contains(".dds") || text.Contains(".bin") || text.Contains("[IK]");
@@ -417,6 +478,16 @@ namespace PoConverter
                 if (parts.Length >= 4 && parts[0] == "Offset" && parts[2] == "Len")
                 {
                     poContent.AppendLine($"#. Max bytes: {parts[3]}");
+                }
+
+                string val = kvp.Value.Trim();
+                if (val.Length > 0 && !val.Contains(" "))
+                {
+                    char firstLetter = val.FirstOrDefault(char.IsLetter);
+                    if (firstLetter != default(char) && char.IsLower(firstLetter))
+                    {
+                        poContent.AppendLine("#. WARNING: Might be a system string/identifier (do not translate).");
+                    }
                 }
                 
                 poContent.AppendLine($"msgctxt \"{EscapeString(kvp.Key)}\"");

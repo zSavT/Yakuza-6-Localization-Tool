@@ -115,7 +115,16 @@ Gestisce la conversione bidirezionale tra l'output JSON di reARMP e il formato s
 - **`PoToJson`**: Legge il file `.po` riga per riga, supportando le stringhe multi-riga. Usa un blocco `try-catch` robusto che previene il crash in caso di sintassi PO errata, segnalando la riga all'utente e proseguendo. Recupera il percorso JSON dal `msgctxt`, trova il token esatto e lo sovrascrive. Scrive infine il file JSON forzando ritorni a capo LF e indentazione a 2 spazi per renderlo digeribile a reARMP.
 
 ### 3. `CmnTextManager.cs` - Lo Scanner Binario
-Uno scanner binario grezzo personalizzato per i file delle cutscene `.cmn`. Legge i file `.bin` byte per byte per estrarre le stringhe traducibili senza dipendere da decompilatori esterni, filtrando automaticamente gli ID interni del motore, stringhe ripetitive e i testi di debug puramente giapponesi. Durante la ricreazione, inietta in modo sicuro il testo tradotto nell'offset di memoria esatto, troncandolo se supera il limite di byte originale per prevenire la corruzione del file.
+Uno scanner binario grezzo personalizzato per i file delle cutscene `.cmn`. Legge i file `.bin` byte per byte per estrarre le stringhe traducibili senza dipendere da decompilatori esterni, filtrando automaticamente gli ID interni del motore, stringhe ripetitive e i testi di debug puramente giapponesi.
+
+Per mantenere i file estratti puliti da rumore binario e byte casuali, lo scanner adotta euristiche avanzate:
+- **Vincoli alfabetici**: Estrae solo testi composti da caratteri latini, latini accentati dell'Europa occidentale o giapponesi, scartando cirillico, armeno o altri alfabeti non pertinenti.
+- **Rapporto lettere e vocali**: I testi latini devono contenere almeno una vocale e le lettere devono rappresentare almeno il 50% della lunghezza totale della stringa.
+- **Soglie e ripetizioni**: Consente parole brevi da 2 caratteri (se presenti in una whitelist di parole reali, es. "no", "ok") ed esenta le stringhe di linguaggio naturale dal limite delle ripetizioni.
+- **Etichettatura automatica**: Le parole singole con iniziale minuscola vengono annotate nel file `.po` con un commento `#. WARNING` per indicare che si tratta probabilmente di identificatori/testi di sistema non da tradurre (es. "substory", "kiryu").
+
+Durante la ricreazione, inietta in modo sicuro il testo tradotto nell'offset di memoria esatto, troncandolo a un confine di carattere UTF-8 valido se supera il limite di byte originale per prevenire la corruzione del file.
+
 
 ### 4. Struttura del `dictionary.json`
 Il file dizionario indica al tool quali file elaborare e dove trovare il testo all'interno dei JSON. È diviso in due sezioni principali:
