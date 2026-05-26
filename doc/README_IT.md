@@ -55,6 +55,7 @@ Puoi avviare il tool da terminale o tramite uno script `.bat` usando queste opzi
 - `-c`, `--clean-all`: Alla fine della Fase 2, elimina tutte le cartelle di lavoro (`og file`, `workspace`, ecc.) mantenendo SOLO `output`.
 - `-y`, `--yes`: Salta tutte le domande di conferma Y/N e chiude in automatico alla fine.
 - `-q`, `--quiet`: Nasconde i log di output dei tool esterni (reARMP, ParTool).
+- `-ns`, `--no-split`: Disabilita la divisione automatica del file `sound_auth.po` in file più piccoli durante l'estrazione.
 - `-d "PATH"`, `--dict "PATH"`: Specifica un file dizionario personalizzato (default: `dictionary.json`).
 
 **Esempio (script .bat):**
@@ -72,6 +73,7 @@ Invece di inserire il percorso o passare gli argomenti a ogni avvio, puoi modifi
   "cleanAll": false,
   "autoYes": true,
   "quietLogs": true,
+  "splitSoundAuth": true,
   "custom-db": ""
 }
 ```

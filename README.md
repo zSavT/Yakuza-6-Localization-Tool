@@ -57,6 +57,7 @@ You can run the tool from the command line or via a `.bat` script using these op
 - `-c`, `--clean-all`: At the end of Phase 2, delete all working folders (`og file`, `workspace`, etc.) keeping ONLY `output`.
 - `-y`, `--yes`: Skip all Y/N confirmation prompts and auto-exit when done.
 - `-q`, `--quiet`: Suppress output logs from external tools (reARMP, ParTool).
+- `-ns`, `--no-split`: Disable automatic splitting of the `sound_auth.po` file during extraction.
 - `-d "PATH"`, `--dict "PATH"`: Specify a custom dictionary file (default: `dictionary.json`).
 
 **Example (.bat script):**
@@ -74,6 +75,7 @@ Instead of passing arguments every time, you can edit the `config.json` file in 
   "cleanAll": false,
   "autoYes": true,
   "quietLogs": true,
+  "splitSoundAuth": true,
   "custom-db": ""
 }
 ```
