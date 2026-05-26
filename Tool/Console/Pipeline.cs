@@ -14,6 +14,44 @@ namespace PoConverter
         public static bool QuietLogs = false;
 
         // ------------
+        // PIPELINE CONTEXT
+        // ------------
+        private class PipelineContext
+        {
+            public required string FolderPath { get; init; }
+            public required string PatchDir { get; init; }
+            public required string OgFileDir { get; init; }
+            public required string OgJsonDir { get; init; }
+            public required string WorkspaceDir { get; init; }
+            public required string OutputDir { get; init; }
+            public required string ConvertedJsonDir { get; init; }
+            public required string WarningsFile { get; init; }
+            public required string Language { get; init; }
+            public required string DictFile { get; init; }
+            public required string RearmpCmd { get; init; }
+            public required bool SkipTextures { get; init; }
+            public required bool CleanAll { get; init; }
+            public required HashSet<string> AllowedBinFiles { get; init; }
+            public required HashSet<string> AllowedTextureFiles { get; init; }
+            public required HashSet<string> AllowedCmnFiles { get; init; }
+            public required Dictionary<string, List<string>> FolderFilters { get; init; }
+            public JObject? CachedDict { get; init; }
+            public string? CustomDbPath { get; init; }
+            public required bool SplitSoundAuth { get; init; }
+        }
+
+        // ------------
+        // PAR FILE DESCRIPTOR
+        // ------------
+        private class ParFileInfo
+        {
+            public required string ParPath { get; init; }
+            public required string UnpackDir { get; init; }
+            public bool Recursive { get; init; }
+            public string SuccessLocation { get; init; } = "";
+        }
+
+        // ------------
         // MAIN EXECUTION
         // ------------
         public static void Run(string[] args)
@@ -29,7 +67,7 @@ namespace PoConverter
             WarningCount = 0;
             QuietLogs = false;
 
-            ParseArguments(args, out string? folderPath, out string? choice, out bool skipTextures, out string language, out bool cleanAll, out bool autoYes, out string dictFile);
+            ParseArguments(args, out string? folderPath, out string? choice, out bool skipTextures, out string language, out bool cleanAll, out bool autoYes, out string dictFile, out string? customDbPath, out bool splitSoundAuth);
 
             PrintHeader("==================================================================");
             PrintHeader("   Yakuza 6 Localization Tool - Ultimate Automation Pipeline");
@@ -39,16 +77,26 @@ namespace PoConverter
             PrintInfo("   - ParTool (by Kaplas80): Extract and compress .par archives");
             PrintHeader("==================================================================\n");
 
-            if (string.IsNullOrEmpty(folderPath))
+            if (string.IsNullOrEmpty(customDbPath))
             {
-                Console.Write("Enter the path of the 'Yakuza 6 - The Song of Life' folder: ");
-                folderPath = Console.ReadLine()?.Trim().Trim('"');
-            }
+                if (string.IsNullOrEmpty(folderPath))
+                {
+                    Console.Write("Enter the path of the 'Yakuza 6 - The Song of Life' folder: ");
+                    folderPath = Console.ReadLine()?.Trim().Trim('"');
+                }
 
-            if (string.IsNullOrEmpty(folderPath) || !Directory.Exists(folderPath))
+                if (string.IsNullOrEmpty(folderPath) || !Directory.Exists(folderPath))
+                {
+                    PrintError($"[!] Error: '{folderPath}' is not a valid folder. (Please provide the full path to the 'Yakuza 6 - The Song of Life' installation directory.)");
+                    return;
+                }
+            }
+            else
             {
-                PrintError($"[!] Error: '{folderPath}' is not a valid folder. (Please provide the full path to the 'Yakuza 6 - The Song of Life' installation directory.)");
-                return;
+                if (string.IsNullOrEmpty(folderPath))
+                {
+                    folderPath = "";
+                }
             }
 
             if (string.IsNullOrEmpty(choice))
@@ -66,209 +114,50 @@ namespace PoConverter
                 return;
             }
 
-            string rearmpCmd = "reARMP.exe";
-            string rearmpArgsPrefix = "";
-
-            HashSet<string> allowedBinFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            HashSet<string> allowedTextureFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            HashSet<string> allowedCmnFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            Dictionary<string, List<string>> folderFilters = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-
-            if (!LoadDictionary(dictFile, out allowedBinFiles, out allowedTextureFiles, out allowedCmnFiles, out folderFilters))
+            if (!LoadDictionary(dictFile, out HashSet<string> allowedBinFiles, out HashSet<string> allowedTextureFiles, out HashSet<string> allowedCmnFiles, out Dictionary<string, List<string>> folderFilters, out JObject? cachedDict))
             {
                 return;
             }
 
             InitializeDirectories(choice, autoYes, out string patchDir, out string ogFileDir, out string ogJsonDir, out string workspaceDir, out string outputDir, out string convertedJsonDir, out string warningsFile);
 
-            Stopwatch stopwatch = new Stopwatch();
-            stopwatch.Start();
+            var ctx = new PipelineContext
+            {
+                FolderPath = folderPath,
+                PatchDir = patchDir,
+                OgFileDir = ogFileDir,
+                OgJsonDir = ogJsonDir,
+                WorkspaceDir = workspaceDir,
+                OutputDir = outputDir,
+                ConvertedJsonDir = convertedJsonDir,
+                WarningsFile = warningsFile,
+                Language = language,
+                DictFile = dictFile,
+                RearmpCmd = "reARMP.exe",
+                SkipTextures = skipTextures,
+                CleanAll = cleanAll,
+                AllowedBinFiles = allowedBinFiles,
+                AllowedTextureFiles = allowedTextureFiles,
+                AllowedCmnFiles = allowedCmnFiles,
+                FolderFilters = folderFilters,
+                CachedDict = cachedDict,
+                CustomDbPath = customDbPath,
+                SplitSoundAuth = splitSoundAuth,
+            };
 
+            Stopwatch stopwatch = Stopwatch.StartNew();
             int targetCount = 0;
             int updatedTextsCount = 0;
             int updatedTexturesCount = 0;
 
+
             if (choice == "1")
             {
-                string uiParPath = Path.Combine(folderPath, "data", "ui.par");
-                string uiParUnpackDir = Path.Combine(folderPath, "data", "ui.par.unpack");
-                string talkParPath = Path.Combine(folderPath, "data", "talk.par");
-                string talkParUnpackDir = Path.Combine(folderPath, "data", "talk.par.unpack");
-
-                if (!skipTextures) UnpackParFile(uiParPath, uiParUnpackDir);
-                UnpackParFile(talkParPath, talkParUnpackDir, true);
-
-                // Unpack all .par files inside "auth" folder
-                string authDirPath = Path.Combine(folderPath, "data", "auth");
-                if (Directory.Exists(authDirPath))
-                {
-                    foreach (string authPar in Directory.GetFiles(authDirPath, "*.par"))
-                    {
-                        UnpackParFile(authPar, authPar + ".unpack", true);
-                    }
-                }
-
-                // Unpack dynamically specified .par files from folder_filters
-                foreach (var kvp in folderFilters)
-                {
-                    string folderName = kvp.Key;
-                    foreach (var fileName in kvp.Value)
-                    {
-                        if (fileName.EndsWith(".par", StringComparison.OrdinalIgnoreCase))
-                        {
-                            string parPath = Path.Combine(folderPath, "data", folderName, fileName);
-                            string parUnpackDir = Path.Combine(folderPath, "data", folderName, fileName + ".unpack");
-                            UnpackParFile(parPath, parUnpackDir, true);
-                        }
-                    }
-                }
-
-                var files = GatherFilesToProcess(folderPath, skipTextures, uiParUnpackDir, talkParUnpackDir, authDirPath, folderFilters);
-
-                if (files.Count == 0)
-                {
-                    PrintWarning("No files found in the folder.");
-                    return;
-                }
-
-                PrintInfo($"\n[*] Found {files.Count} total files to evaluate.");
-
-                foreach (var binPath in files)
-                {
-                    if (ProcessExtractionFile(binPath, ogFileDir, ogJsonDir, workspaceDir, language, dictFile, rearmpCmd, rearmpArgsPrefix, allowedBinFiles, allowedTextureFiles, allowedCmnFiles, folderFilters))
-                    {
-                        targetCount++;
-                    }
-                }
-                PrintInfo($"\n[*] Finished extraction! Processed {targetCount} targeted files.");
-        }
-        else if (choice == "2")
+                targetCount = RunExtraction(ctx);
+            }
+            else if (choice == "2")
             {
-                var poFiles = Directory.GetFiles(workspaceDir, "*.po", SearchOption.AllDirectories)
-                    .Where(f => IsFileAllowed(Path.GetFileName(f).Replace(".po", ".bin"), allowedBinFiles) || IsFileAllowed(Path.GetFileName(f).Replace(".po", ".bin"), allowedCmnFiles))
-                    .ToList();
-                var texFiles = new List<string>();
-                
-                if (!skipTextures)
-                {
-                    texFiles = Directory.GetFiles(workspaceDir, "*.*", SearchOption.AllDirectories)
-                        .Where(f => IsFileAllowed(Path.GetFileName(f), allowedTextureFiles))
-                        .ToList();
-                }
-
-                if (poFiles.Count == 0 && texFiles.Count == 0)
-                {
-                    PrintWarning("No .po or texture files found in the workspace folder.");
-                    return;
-                }
-
-                PrintHeader("\n[*] Copying original files from 'og file' to 'output'...");
-                CopyDirectory(ogFileDir, outputDir);
-
-                PrintInfo($"\n[*] Found {poFiles.Count} .po files and {texFiles.Count} textures to process.");
-
-                int currentPo = 0;
-                foreach (var poPath in poFiles)
-                {
-                    currentPo++;
-                    string poFilename = Path.GetFileName(poPath);
-                    PrintHeader($"\n[*] Processing PO File [{currentPo}/{poFiles.Count}]: {poFilename}");
-
-                    if (ProcessRecreationPoFile(poPath, workspaceDir, ogFileDir, ogJsonDir, outputDir, convertedJsonDir, dictFile, rearmpCmd, rearmpArgsPrefix, allowedCmnFiles, warningsFile))
-                    {
-                        updatedTextsCount++;
-                    }
-                }
-
-                if (!skipTextures)
-                {
-                    int currentTex = 0;
-                    foreach (var texPath in texFiles)
-                    {
-                        currentTex++;
-                        string texFilename = Path.GetFileName(texPath);
-                        PrintHeader($"\n[*] Processing Texture [{currentTex}/{texFiles.Count}]: {texFilename}");
-
-                        if (ProcessRecreationTextureFile(texPath, workspaceDir, outputDir))
-                        {
-                            updatedTexturesCount++;
-                        }
-                    }
-                }
-
-                string outputUiParUnpack = Path.Combine(outputDir, "data", "ui.par.unpack");
-                if (!skipTextures)
-                {
-                    string originalUiPar = Path.Combine(folderPath, "data", "ui.par");
-                    string finalUiPar = Path.Combine(outputDir, "data", "ui.par");
-                    PackParFile(originalUiPar, outputUiParUnpack, finalUiPar, "output\\data");
-                }
-
-                string outputTalkParUnpack = Path.Combine(outputDir, "data", "talk.par.unpack");
-                string originalTalkPar = Path.Combine(folderPath, "data", "talk.par");
-                string finalTalkPar = Path.Combine(outputDir, "data", "talk.par");
-                PackParFile(originalTalkPar, outputTalkParUnpack, finalTalkPar, "output\\data");
-
-                // Repack auth .par files
-                string outputAuthDirPath = Path.Combine(outputDir, "data", "auth");
-                if (Directory.Exists(outputAuthDirPath))
-                {
-                    foreach (string outputAuthUnpack in Directory.GetDirectories(outputAuthDirPath, "*.par.unpack"))
-                    {
-                        string fileName = Path.GetFileName(outputAuthUnpack).Replace(".unpack", "");
-                        string originalAuthPar = Path.Combine(folderPath, "data", "auth", fileName);
-                        string finalPar = Path.Combine(outputDir, "data", "auth", fileName);
-                        PackParFile(originalAuthPar, outputAuthUnpack, finalPar, "output\\data\\auth");
-                    }
-                }
-
-                // Repack dynamically specified .par files from folder_filters
-                foreach (var kvp in folderFilters)
-                {
-                    string folderName = kvp.Key;
-                    foreach (var fileName in kvp.Value)
-                    {
-                        if (fileName.EndsWith(".par", StringComparison.OrdinalIgnoreCase))
-                        {
-                            string outputParUnpack = Path.Combine(outputDir, "data", folderName, fileName + ".unpack");
-                            string originalPar = Path.Combine(folderPath, "data", folderName, fileName);
-                            string finalPar = Path.Combine(outputDir, "data", folderName, fileName);
-                            PackParFile(originalPar, outputParUnpack, finalPar, $"output\\data\\{folderName}");
-                        }
-                    }
-                }
-
-                PrintHeader("\n[*] Cleaning up output folder...");
-                int removedCount = 0;
-                var allOutputBins = Directory.GetFiles(outputDir, "*.bin", SearchOption.AllDirectories);
-                foreach (var bin in allOutputBins)
-                {
-                    string binName = Path.GetFileName(bin);
-                    if (!IsFileAllowed(binName, allowedBinFiles) && !IsFileAllowed(binName, allowedCmnFiles))
-                    {
-                        try 
-                        { 
-                            File.SetAttributes(bin, File.GetAttributes(bin) & ~FileAttributes.ReadOnly);
-                            File.Delete(bin); 
-                            removedCount++;
-                        } 
-                        catch { }
-                    }
-                }
-                if (removedCount > 0)
-                {
-                    PrintSuccess($"  [OK] Cleaned up {removedCount} unmodified .bin files.");
-                }
-
-                if (cleanAll)
-                {
-                    PrintHeader("\n[*] Cleaning up all temporary folders...");
-                    try { if (Directory.Exists(ogFileDir)) Directory.Delete(ogFileDir, true); } catch { }
-                    try { if (Directory.Exists(ogJsonDir)) Directory.Delete(ogJsonDir, true); } catch { }
-                    try { if (Directory.Exists(workspaceDir)) Directory.Delete(workspaceDir, true); } catch { }
-                    try { if (Directory.Exists(convertedJsonDir)) Directory.Delete(convertedJsonDir, true); } catch { }
-                    PrintSuccess("  [OK] Cleanup completed.");
-                }
+                (updatedTextsCount, updatedTexturesCount) = RunRecreation(ctx);
             }
 
             int cmnWarnings = 0;
@@ -311,6 +200,512 @@ namespace PoConverter
         }
 
         // ------------
+        // EXTRACTION PHASE
+        // ------------
+        private static int RunExtraction(PipelineContext ctx)
+        {
+            if (!string.IsNullOrEmpty(ctx.CustomDbPath))
+            {
+                return RunCustomDbExtraction(ctx);
+            }
+
+            var parFiles = GetParFilesToUnpack(ctx);
+            foreach (var pf in parFiles)
+            {
+                UnpackParFile(pf.ParPath, pf.UnpackDir, pf.Recursive);
+            }
+
+            var files = GatherFilesToProcess(ctx);
+
+            if (files.Count == 0)
+            {
+                PrintWarning("No files found in the folder.");
+                return 0;
+            }
+
+            PrintInfo($"\n[*] Found {files.Count} total files to evaluate.");
+
+            int targetCount = 0;
+            foreach (var binPath in files)
+            {
+                if (ProcessExtractionFile(binPath, ctx, files))
+                {
+                    targetCount++;
+                }
+            }
+            PrintInfo($"\n[*] Finished extraction! Processed {targetCount} targeted files.");
+            return targetCount;
+        }
+
+        private static int RunCustomDbExtraction(PipelineContext ctx)
+        {
+            string customDbPath = ctx.CustomDbPath!;
+            if (!Directory.Exists(customDbPath))
+            {
+                PrintError($"[!] Error: custom-db path '{customDbPath}' does not exist.");
+                return 0;
+            }
+
+            var binFiles = Directory.GetFiles(customDbPath, "*.bin", SearchOption.AllDirectories)
+                .Where(f => !f.EndsWith(".bin.json"))
+                .ToList();
+
+            if (binFiles.Count == 0)
+            {
+                PrintWarning($"No .bin files found in custom-db path '{customDbPath}'.");
+                return 0;
+            }
+
+            PrintInfo($"\n[*] Custom-DB mode: found {binFiles.Count} .bin files in '{customDbPath}'.");
+
+            int targetCount = 0;
+            int current = 0;
+            foreach (var binPath in binFiles)
+            {
+                current++;
+                string filename = Path.GetFileName(binPath);
+                string relPath = binPath.Substring(customDbPath.Length).TrimStart('\\', '/');
+                string relDir = Path.GetDirectoryName(relPath) ?? "";
+
+                PrintHeader($"\n[*] Processing [{current}/{binFiles.Count}]: {relPath}");
+
+                string currentOgFileDir = Path.Combine(ctx.OgFileDir, relDir);
+                Directory.CreateDirectory(currentOgFileDir);
+                string copiedBinPath = Path.Combine(currentOgFileDir, filename);
+                CopyFileUnrestricted(binPath, copiedBinPath);
+
+                string currentOgJsonDir = Path.Combine(ctx.OgJsonDir, relDir);
+                string currentWorkspaceDir = Path.Combine(ctx.WorkspaceDir, relDir);
+
+                PrintStep("  -> [Pipeline] Executing reARMP for JSON extraction...");
+                if (RunProcess(ctx.RearmpCmd, $"\"{copiedBinPath}\""))
+                {
+                    string generatedJsonPathInPlace = copiedBinPath + ".json";
+                    string targetJsonPath = Path.Combine(currentOgJsonDir, filename + ".json");
+                    string? actualGeneratedJson = FindGeneratedFile(filename + ".json", generatedJsonPathInPlace);
+
+                    if (actualGeneratedJson != null)
+                    {
+                        Directory.CreateDirectory(currentOgJsonDir);
+                        if (File.Exists(targetJsonPath)) File.Delete(targetJsonPath);
+                        File.Move(actualGeneratedJson, targetJsonPath);
+
+                        string poPath = Path.Combine(currentWorkspaceDir, filename.Replace(".bin", ".po"));
+                        PrintStep("  -> [PoConverter] Generating PO file internally...");
+                        try
+                        {
+                            int count = PoConverter.JsonToPo(targetJsonPath, poPath, ctx.DictFile, ctx.Language, ctx.CachedDict);
+                            if (count > 0)
+                            {
+                                PrintSuccess($"  [OK] Created PO file: {Path.GetFileName(poPath)} ({count} strings)");
+                                targetCount++;
+                            }
+                            else
+                            {
+                                PrintWarning($"  [-] No valid strings found in {filename}. Skipping.");
+                                File.Delete(targetJsonPath);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            PrintError($"  [!] Error during PO conversion for {filename}: {ex.Message}");
+                        }
+                    }
+                    else
+                    {
+                        PrintError($"  [!] JSON file not generated for {filename}.");
+                    }
+                }
+            }
+
+            PrintInfo($"\n[*] Custom-DB extraction finished! Processed {targetCount} files.");
+            return targetCount;
+        }
+
+        // ------------
+        // RECREATION PHASE
+        // ------------
+        private static (int updatedTexts, int updatedTextures) RunRecreation(PipelineContext ctx)
+        {
+            if (!string.IsNullOrEmpty(ctx.CustomDbPath))
+            {
+                return RunCustomDbRecreation(ctx);
+            }
+
+            var poFiles = Directory.GetFiles(ctx.WorkspaceDir, "*.po", SearchOption.AllDirectories)
+                .Where(f => IsFileAllowed(Path.GetFileName(f).Replace(".po", ".bin"), ctx.AllowedBinFiles) || IsFileAllowed(Path.GetFileName(f).Replace(".po", ".bin"), ctx.AllowedCmnFiles))
+                .ToList();
+            var texFiles = new List<string>();
+
+            if (!ctx.SkipTextures)
+            {
+                texFiles = Directory.GetFiles(ctx.WorkspaceDir, "*.*", SearchOption.AllDirectories)
+                    .Where(f => IsFileAllowed(Path.GetFileName(f), ctx.AllowedTextureFiles))
+                    .ToList();
+            }
+
+            if (poFiles.Count == 0 && texFiles.Count == 0)
+            {
+                PrintWarning("No .po or texture files found in the workspace folder.");
+                return (0, 0);
+            }
+
+            PrintHeader("\n[*] Copying original files from 'og file' to 'output'...");
+            CopyDirectory(ctx.OgFileDir, ctx.OutputDir);
+
+            PrintInfo($"\n[*] Found {poFiles.Count} .po files and {texFiles.Count} textures to process.");
+
+            int updatedTextsCount = 0;
+            int currentPo = 0;
+            foreach (var poPath in poFiles)
+            {
+                currentPo++;
+                string poFilename = Path.GetFileName(poPath);
+                PrintHeader($"\n[*] Processing PO File [{currentPo}/{poFiles.Count}]: {poFilename}");
+
+                if (ProcessRecreationPoFile(poPath, ctx))
+                {
+                    updatedTextsCount++;
+                }
+            }
+
+            int updatedTexturesCount = 0;
+            if (!ctx.SkipTextures)
+            {
+                int currentTex = 0;
+                foreach (var texPath in texFiles)
+                {
+                    currentTex++;
+                    string texFilename = Path.GetFileName(texPath);
+                    PrintHeader($"\n[*] Processing Texture [{currentTex}/{texFiles.Count}]: {texFilename}");
+
+                    if (ProcessRecreationTextureFile(texPath, ctx.WorkspaceDir, ctx.OutputDir))
+                    {
+                        updatedTexturesCount++;
+                    }
+                }
+            }
+
+
+            var parFiles = GetParFilesToRepack(ctx);
+            foreach (var pf in parFiles)
+            {
+                PackParFile(pf.ParPath, pf.UnpackDir, Path.Combine(ctx.OutputDir, GetRelativeToData(pf.ParPath)), pf.SuccessLocation);
+            }
+
+            PrintHeader("\n[*] Cleaning up output folder...");
+            int removedCount = 0;
+            var allOutputBins = Directory.GetFiles(ctx.OutputDir, "*.bin", SearchOption.AllDirectories);
+            foreach (var bin in allOutputBins)
+            {
+                string binName = Path.GetFileName(bin);
+                if (!IsFileAllowed(binName, ctx.AllowedBinFiles) && !IsFileAllowed(binName, ctx.AllowedCmnFiles))
+                {
+                    try
+                    {
+                        File.SetAttributes(bin, File.GetAttributes(bin) & ~FileAttributes.ReadOnly);
+                        File.Delete(bin);
+                        removedCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        PrintStep($"  [!] Could not delete {binName}: {ex.Message}");
+                    }
+                }
+            }
+            if (removedCount > 0)
+            {
+                PrintSuccess($"  [OK] Cleaned up {removedCount} unmodified .bin files.");
+            }
+
+            if (ctx.CleanAll)
+            {
+                PrintHeader("\n[*] Cleaning up all temporary folders...");
+                SafeDeleteDirectory(ctx.OgFileDir);
+                SafeDeleteDirectory(ctx.OgJsonDir);
+                SafeDeleteDirectory(ctx.WorkspaceDir);
+                SafeDeleteDirectory(ctx.ConvertedJsonDir);
+                PrintSuccess("  [OK] Cleanup completed.");
+            }
+
+            return (updatedTextsCount, updatedTexturesCount);
+        }
+
+        private static (int, int) RunCustomDbRecreation(PipelineContext ctx)
+        {
+            var poFiles = Directory.GetFiles(ctx.WorkspaceDir, "*.po", SearchOption.AllDirectories).ToList();
+
+            if (poFiles.Count == 0)
+            {
+                PrintWarning("No .po files found in the workspace folder.");
+                return (0, 0);
+            }
+
+            PrintHeader("\n[*] Copying original files from 'og file' to 'output'...");
+            CopyDirectory(ctx.OgFileDir, ctx.OutputDir);
+
+            PrintInfo($"\n[*] Custom-DB mode: found {poFiles.Count} .po files to process.");
+
+            int updatedCount = 0;
+            int current = 0;
+            foreach (var poPath in poFiles)
+            {
+                current++;
+                string poFilename = Path.GetFileName(poPath);
+                string relPath = GetRelativeWorkspacePath(poPath, ctx.WorkspaceDir);
+
+                PrintHeader($"\n[*] Processing PO File [{current}/{poFiles.Count}]: {poFilename}");
+
+                string currentOgJsonDir = Path.Combine(ctx.OgJsonDir, relPath);
+                string currentOutputDir = Path.Combine(ctx.OutputDir, relPath);
+                Directory.CreateDirectory(currentOutputDir);
+
+                string baseName = poFilename.Replace(".po", "");
+                string jsonFilename = baseName + ".bin.json";
+                string ogJsonPath = Path.Combine(currentOgJsonDir, jsonFilename);
+                string outputJsonPath = Path.Combine(currentOutputDir, jsonFilename);
+
+                if (!File.Exists(ogJsonPath))
+                {
+                    PrintError($"  [!] Original JSON file missing: {jsonFilename}. (Try running Phase 1 Extraction again.)");
+                    continue;
+                }
+
+                PrintStep($"  -> [PoConverter] Injecting translation from {poFilename} into JSON...");
+                try
+                {
+                    PoConverter.PoToJson(poPath, outputJsonPath, ogJsonPath, ctx.DictFile);
+                }
+                catch (Exception ex)
+                {
+                    PrintError($"  [!] Error during PO injection for {poFilename}: {ex.Message}");
+                    continue;
+                }
+
+                PrintStep("  -> [Pipeline] Executing reARMP to recreate .bin...");
+                string targetBinPath = Path.Combine(currentOutputDir, baseName + ".bin");
+
+                if (RunProcess(ctx.RearmpCmd, $"\"{outputJsonPath}\""))
+                {
+                    string generatedBinPathInPlace = Path.Combine(currentOutputDir, jsonFilename + ".bin");
+                    string? actualGeneratedBin = FindGeneratedFile(jsonFilename + ".bin", generatedBinPathInPlace);
+
+                    if (actualGeneratedBin != null)
+                    {
+                        if (actualGeneratedBin != targetBinPath)
+                        {
+                            if (File.Exists(targetBinPath))
+                            {
+                                File.SetAttributes(targetBinPath, File.GetAttributes(targetBinPath) & ~FileAttributes.ReadOnly);
+                                File.Delete(targetBinPath);
+                            }
+                            File.Move(actualGeneratedBin, targetBinPath);
+                        }
+                        PrintSuccess($"  [OK] BIN file updated successfully.");
+
+                        if (File.Exists(outputJsonPath))
+                        {
+                            string targetConvertedJsonDir = Path.Combine(ctx.ConvertedJsonDir, relPath);
+                            Directory.CreateDirectory(targetConvertedJsonDir);
+                            string targetConvertedJsonPath = Path.Combine(targetConvertedJsonDir, jsonFilename);
+                            if (File.Exists(targetConvertedJsonPath)) File.Delete(targetConvertedJsonPath);
+                            File.Move(outputJsonPath, targetConvertedJsonPath);
+                        }
+
+                        updatedCount++;
+                    }
+                    else
+                    {
+                        PrintError($"  [!] Error: {baseName}.bin was not generated by reARMP.");
+                    }
+                }
+            }
+
+            if (ctx.CleanAll)
+            {
+                PrintHeader("\n[*] Cleaning up all temporary folders...");
+                SafeDeleteDirectory(ctx.OgFileDir);
+                SafeDeleteDirectory(ctx.OgJsonDir);
+                SafeDeleteDirectory(ctx.WorkspaceDir);
+                SafeDeleteDirectory(ctx.ConvertedJsonDir);
+                PrintSuccess("  [OK] Cleanup completed.");
+            }
+
+            PrintInfo($"\n[*] Custom-DB recreation finished! Updated {updatedCount} files.");
+            return (updatedCount, 0);
+        }
+
+        // ------------
+        // PAR FILE MANAGEMENT
+        // ------------
+        private static List<ParFileInfo> GetParFilesToUnpack(PipelineContext ctx)
+        {
+            var parFiles = new List<ParFileInfo>();
+
+            if (!ctx.SkipTextures)
+            {
+                parFiles.Add(new ParFileInfo
+                {
+                    ParPath = Path.Combine(ctx.FolderPath, "data", "ui.par"),
+                    UnpackDir = Path.Combine(ctx.FolderPath, "data", "ui.par.unpack"),
+                    Recursive = false
+                });
+            }
+
+            parFiles.Add(new ParFileInfo
+            {
+                ParPath = Path.Combine(ctx.FolderPath, "data", "talk.par"),
+                UnpackDir = Path.Combine(ctx.FolderPath, "data", "talk.par.unpack"),
+                Recursive = true
+            });
+
+            // auth/e/*.par
+            string authDirPath = Path.Combine(ctx.FolderPath, "data", "auth", "e");
+            if (Directory.Exists(authDirPath))
+            {
+                foreach (string authPar in Directory.GetFiles(authDirPath, "*.par"))
+                {
+                    parFiles.Add(new ParFileInfo
+                    {
+                        ParPath = authPar,
+                        UnpackDir = authPar + ".unpack",
+                        Recursive = true
+                    });
+                }
+            }
+
+            // hact/e/*.par
+            string hactDirPath = Path.Combine(ctx.FolderPath, "data", "hact", "e");
+            if (Directory.Exists(hactDirPath))
+            {
+                foreach (string hactPar in Directory.GetFiles(hactDirPath, "*.par"))
+                {
+                    parFiles.Add(new ParFileInfo
+                    {
+                        ParPath = hactPar,
+                        UnpackDir = hactPar + ".unpack",
+                        Recursive = true
+                    });
+                }
+            }
+
+            // folder_filters entries
+            foreach (var kvp in ctx.FolderFilters)
+            {
+                foreach (var fileName in kvp.Value)
+                {
+                    if (fileName.EndsWith(".par", StringComparison.OrdinalIgnoreCase))
+                    {
+                        parFiles.Add(new ParFileInfo
+                        {
+                            ParPath = Path.Combine(ctx.FolderPath, "data", kvp.Key, fileName),
+                            UnpackDir = Path.Combine(ctx.FolderPath, "data", kvp.Key, fileName + ".unpack"),
+                            Recursive = true
+                        });
+                    }
+                }
+            }
+
+            return parFiles;
+        }
+
+        private static List<ParFileInfo> GetParFilesToRepack(PipelineContext ctx)
+        {
+            var parFiles = new List<ParFileInfo>();
+
+            // ui.par
+            string outputUiParUnpack = Path.Combine(ctx.OutputDir, "data", "ui.par.unpack");
+            if (!ctx.SkipTextures && Directory.Exists(outputUiParUnpack))
+            {
+                parFiles.Add(new ParFileInfo
+                {
+                    ParPath = Path.Combine(ctx.FolderPath, "data", "ui.par"),
+                    UnpackDir = outputUiParUnpack,
+                    SuccessLocation = Path.Combine("output", "data")
+                });
+            }
+
+            // talk.par
+            string outputTalkParUnpack = Path.Combine(ctx.OutputDir, "data", "talk.par.unpack");
+            if (Directory.Exists(outputTalkParUnpack))
+            {
+                parFiles.Add(new ParFileInfo
+                {
+                    ParPath = Path.Combine(ctx.FolderPath, "data", "talk.par"),
+                    UnpackDir = outputTalkParUnpack,
+                    SuccessLocation = Path.Combine("output", "data")
+                });
+            }
+
+            // auth/e/*.par
+            string outputAuthDirPath = Path.Combine(ctx.OutputDir, "data", "auth", "e");
+            if (Directory.Exists(outputAuthDirPath))
+            {
+                foreach (string outputAuthUnpack in Directory.GetDirectories(outputAuthDirPath, "*.par.unpack"))
+                {
+                    string fileName = Path.GetFileName(outputAuthUnpack).Replace(".unpack", "");
+                    parFiles.Add(new ParFileInfo
+                    {
+                        ParPath = Path.Combine(ctx.FolderPath, "data", "auth", "e", fileName),
+                        UnpackDir = outputAuthUnpack,
+                        SuccessLocation = Path.Combine("output", "data", "auth", "e")
+                    });
+                }
+            }
+
+            // hact/e/*.par
+            string outputHactDirPath = Path.Combine(ctx.OutputDir, "data", "hact", "e");
+            if (Directory.Exists(outputHactDirPath))
+            {
+                foreach (string outputHactUnpack in Directory.GetDirectories(outputHactDirPath, "*.par.unpack"))
+                {
+                    string fileName = Path.GetFileName(outputHactUnpack).Replace(".unpack", "");
+                    parFiles.Add(new ParFileInfo
+                    {
+                        ParPath = Path.Combine(ctx.FolderPath, "data", "hact", "e", fileName),
+                        UnpackDir = outputHactUnpack,
+                        SuccessLocation = Path.Combine("output", "data", "hact", "e")
+                    });
+                }
+            }
+
+            // folder_filters entries
+            foreach (var kvp in ctx.FolderFilters)
+            {
+                foreach (var fileName in kvp.Value)
+                {
+                    if (fileName.EndsWith(".par", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string outputParUnpack = Path.Combine(ctx.OutputDir, "data", kvp.Key, fileName + ".unpack");
+                        if (Directory.Exists(outputParUnpack))
+                        {
+                            parFiles.Add(new ParFileInfo
+                            {
+                                ParPath = Path.Combine(ctx.FolderPath, "data", kvp.Key, fileName),
+                                UnpackDir = outputParUnpack,
+                                SuccessLocation = Path.Combine("output", "data", kvp.Key)
+                            });
+                        }
+                    }
+                }
+            }
+
+            return parFiles;
+        }
+
+        /// <summary>
+        /// Gets the relative path from data root for a given par file path.
+        /// E.g. "C:\game\data\auth\somefile.par" -> "data\auth\somefile.par"
+        /// </summary>
+        private static string GetRelativeToData(string parPath)
+        {
+            string normalized = parPath.Replace('/', '\\');
+            int dataIdx = normalized.IndexOf("\\data\\", StringComparison.OrdinalIgnoreCase);
+            if (dataIdx != -1) return normalized.Substring(dataIdx + 1);
+            return Path.GetFileName(parPath);
+        }
+
+        // ------------
         // INITIALIZATION & ARGS
         // ------------
         private static void InitializeDirectories(string choice, bool autoYes, out string patchDir, out string ogFileDir, out string ogJsonDir, out string workspaceDir, out string outputDir, out string convertedJsonDir, out string warningsFile)
@@ -337,9 +732,9 @@ namespace PoConverter
                     if (doClean)
                     {
                         PrintStep("  -> Cleaning up previous extraction...");
-                        try { if (Directory.Exists(ogFileDir)) Directory.Delete(ogFileDir, true); } catch { }
-                        try { if (Directory.Exists(ogJsonDir)) Directory.Delete(ogJsonDir, true); } catch { }
-                        try { if (Directory.Exists(workspaceDir)) Directory.Delete(workspaceDir, true); } catch { }
+                        SafeDeleteDirectory(ogFileDir);
+                        SafeDeleteDirectory(ogJsonDir);
+                        SafeDeleteDirectory(workspaceDir);
                     }
                 }
             }
@@ -357,9 +752,9 @@ namespace PoConverter
                     if (doClean)
                     {
                         PrintStep("  -> Cleaning up previous output...");
-                        try { Directory.Delete(outputDir, true); } catch { }
-                        try { if (Directory.Exists(convertedJsonDir)) Directory.Delete(convertedJsonDir, true); } catch { }
-                        try { if (File.Exists(warningsFile)) File.Delete(warningsFile); } catch { }
+                        SafeDeleteDirectory(outputDir);
+                        SafeDeleteDirectory(convertedJsonDir);
+                        SafeDeleteFile(warningsFile);
                     }
                 }
             }
@@ -372,7 +767,7 @@ namespace PoConverter
             if (choice == "2") Directory.CreateDirectory(convertedJsonDir);
         }
 
-        private static void ParseArguments(string[] args, out string? folderPath, out string? choice, out bool skipTextures, out string language, out bool cleanAll, out bool autoYes, out string dictFile)
+        private static void ParseArguments(string[] args, out string? folderPath, out string? choice, out bool skipTextures, out string language, out bool cleanAll, out bool autoYes, out string dictFile, out string? customDbPath, out bool splitSoundAuth)
         {
             folderPath = null;
             choice = null;
@@ -381,6 +776,8 @@ namespace PoConverter
             cleanAll = false;
             autoYes = false;
             dictFile = "dictionary.json";
+            customDbPath = null;
+            splitSoundAuth = true;
 
             string configPath = "config.json";
             if (File.Exists(configPath))
@@ -393,10 +790,24 @@ namespace PoConverter
                     if (config["gamePath"] != null && !string.IsNullOrWhiteSpace(config["gamePath"]?.ToString())) folderPath = config["gamePath"]?.ToString();
                     if (config["language"] != null && !string.IsNullOrWhiteSpace(config["language"]?.ToString())) language = config["language"]?.ToString() ?? "it";
                     if (config["dictionaryFile"] != null && !string.IsNullOrWhiteSpace(config["dictionaryFile"]?.ToString())) dictFile = config["dictionaryFile"]?.ToString() ?? "dictionary.json";
-                    if (config["skipTextures"] != null) skipTextures = (bool?)config["skipTextures"] ?? skipTextures;
-                    if (config["cleanAll"] != null) cleanAll = (bool?)config["cleanAll"] ?? cleanAll;
-                    if (config["autoYes"] != null) autoYes = (bool?)config["autoYes"] ?? autoYes;
-                    if (config["quietLogs"] != null) QuietLogs = (bool?)config["quietLogs"] ?? QuietLogs;
+                    if (config["custom-db"] != null && !string.IsNullOrWhiteSpace(config["custom-db"]?.ToString())) customDbPath = config["custom-db"]?.ToString();
+
+
+                    skipTextures = ParseConfigBool(config, "skipTextures", skipTextures);
+                    cleanAll = ParseConfigBool(config, "cleanAll", cleanAll);
+                    autoYes = ParseConfigBool(config, "autoYes", autoYes);
+                    QuietLogs = ParseConfigBool(config, "quietLogs", QuietLogs);
+
+
+                    var knownKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                        { "gamePath", "language", "dictionaryFile", "skipTextures", "cleanAll", "autoYes", "quietLogs", "custom-db" };
+                    foreach (var prop in config.Properties())
+                    {
+                        if (!knownKeys.Contains(prop.Name))
+                        {
+                            PrintWarning($"\n[!] Warning: Unknown config key '{prop.Name}' in config.json (ignored).");
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -442,6 +853,10 @@ namespace PoConverter
                         case "--quiet":
                             QuietLogs = true;
                             break;
+                        case "-ns":
+                        case "--no-split":
+                            splitSoundAuth = false;
+                            break;
                         case "-d":
                         case "--dict":
                             if (i + 1 < args.Length) dictFile = args[++i].Trim('"');
@@ -449,6 +864,19 @@ namespace PoConverter
                     }
                 }
             }
+        }
+
+        private static bool ParseConfigBool(JObject config, string key, bool defaultValue)
+        {
+            if (config[key] == null) return defaultValue;
+
+            if (config[key]!.Type == JTokenType.Boolean)
+            {
+                return (bool)config[key]!;
+            }
+
+            PrintWarning($"\n[!] Warning: config.json key '{key}' should be a boolean (true/false), got '{config[key]}'. Using default: {defaultValue}.");
+            return defaultValue;
         }
 
         // ------------
@@ -467,7 +895,10 @@ namespace PoConverter
                     process.Dispose();
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                PrintStep($"  [!] Could not kill process '{name}': {ex.Message}");
+            }
         }
 
         private static bool RunProcess(string fileName, string arguments)
@@ -490,7 +921,7 @@ namespace PoConverter
                     {
                         string toolName = Path.GetFileNameWithoutExtension(fileName);
                         process.OutputDataReceived += (sender, e) => { if (e.Data != null && !QuietLogs) PrintStep($"    [{toolName}] {e.Data}"); };
-                        process.ErrorDataReceived += (sender, e) => { if (e.Data != null && !QuietLogs) PrintError($"    [{toolName} ERR] {e.Data}"); };
+                        process.ErrorDataReceived += (sender, e) => { if (e.Data != null && !QuietLogs) PrintStep($"    [{toolName} STDERR] {e.Data}"); };
 
                         process.BeginOutputReadLine();
                         process.BeginErrorReadLine();
@@ -568,12 +999,13 @@ namespace PoConverter
         // ------------
         // DICTIONARY & FILTERING
         // ------------
-        private static bool LoadDictionary(string dictFile, out HashSet<string> allowedBinFiles, out HashSet<string> allowedTextureFiles, out HashSet<string> allowedCmnFiles, out Dictionary<string, List<string>> folderFilters)
+        private static bool LoadDictionary(string dictFile, out HashSet<string> allowedBinFiles, out HashSet<string> allowedTextureFiles, out HashSet<string> allowedCmnFiles, out Dictionary<string, List<string>> folderFilters, out JObject? cachedDict)
         {
             allowedBinFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             allowedTextureFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             allowedCmnFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             folderFilters = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            cachedDict = null;
 
             if (!File.Exists(dictFile))
             {
@@ -585,6 +1017,7 @@ namespace PoConverter
             {
                 string dictJson = File.ReadAllText(dictFile);
                 JObject dictObj = JObject.Parse(dictJson);
+                cachedDict = dictObj;
 
                 if (dictObj["folder_filters"] is JObject folderFiltersObj)
                 {
@@ -627,17 +1060,22 @@ namespace PoConverter
             }
         }
 
-        private static List<string> GatherFilesToProcess(string folderPath, bool skipTextures, string uiParUnpackDir, string talkParUnpackDir, string authDirPath, Dictionary<string, List<string>> folderFilters)
+        private static List<string> GatherFilesToProcess(PipelineContext ctx)
         {
+            string uiParUnpackDir = Path.Combine(ctx.FolderPath, "data", "ui.par.unpack");
+            string talkParUnpackDir = Path.Combine(ctx.FolderPath, "data", "talk.par.unpack");
+            string authDirPath = Path.Combine(ctx.FolderPath, "data", "auth", "e");
+            string hactDirPath = Path.Combine(ctx.FolderPath, "data", "hact", "e");
+
             var files = new List<string>();
-            string dbPath = Path.Combine(folderPath, "data", "db", "e");
+            string dbPath = Path.Combine(ctx.FolderPath, "data", "db", "e");
 
             if (Directory.Exists(dbPath))
             {
                 files.AddRange(Directory.GetFiles(dbPath, "*.*", SearchOption.AllDirectories)
                     .Where(f => !f.EndsWith(".bin.json")));
             }
-            if (!skipTextures && Directory.Exists(uiParUnpackDir))
+            if (!ctx.SkipTextures && Directory.Exists(uiParUnpackDir))
             {
                 files.AddRange(Directory.GetFiles(uiParUnpackDir, "*.*", SearchOption.AllDirectories)
                     .Where(f => !f.EndsWith(".bin.json")));
@@ -657,14 +1095,23 @@ namespace PoConverter
                 }
             }
 
-            foreach (var kvp in folderFilters)
+            if (Directory.Exists(hactDirPath))
+            {
+                foreach (string hactParUnpackDir in Directory.GetDirectories(hactDirPath, "*.par.unpack"))
+                {
+                    files.AddRange(Directory.GetFiles(hactParUnpackDir, "*.*", SearchOption.AllDirectories)
+                        .Where(f => !f.EndsWith(".bin.json")));
+                }
+            }
+
+            foreach (var kvp in ctx.FolderFilters)
             {
                 string folderName = kvp.Key;
                 foreach (var fileName in kvp.Value)
                 {
                     if (fileName.EndsWith(".par", StringComparison.OrdinalIgnoreCase))
                     {
-                        string parUnpackDir = Path.Combine(folderPath, "data", folderName, fileName + ".unpack");
+                        string parUnpackDir = Path.Combine(ctx.FolderPath, "data", folderName, fileName + ".unpack");
                         if (Directory.Exists(parUnpackDir))
                         {
                             files.AddRange(Directory.GetFiles(parUnpackDir, "*.*", SearchOption.AllDirectories)
@@ -673,7 +1120,7 @@ namespace PoConverter
                     }
                     else
                     {
-                        string filePath = Path.Combine(folderPath, "data", folderName, fileName);
+                        string filePath = Path.Combine(ctx.FolderPath, "data", folderName, fileName);
                         if (File.Exists(filePath))
                         {
                             files.Add(filePath);
@@ -700,7 +1147,7 @@ namespace PoConverter
             return "";
         }
 
-        private static bool ShouldProcessFile(string filename, string relPath, HashSet<string> allowedBinFiles, HashSet<string> allowedTextureFiles, HashSet<string> allowedCmnFiles, Dictionary<string, List<string>> folderFilters, out bool isTargetBin, out bool isTargetTex, out bool isTargetCmn)
+        private static bool ShouldProcessFile(string filename, string relPath, HashSet<string> allowedBinFiles, HashSet<string> allowedTextureFiles, HashSet<string> allowedCmnFiles, Dictionary<string, List<string>> folderFilters, List<string> allFiles, out bool isTargetBin, out bool isTargetTex, out bool isTargetCmn)
         {
             isTargetBin = IsFileAllowed(filename, allowedBinFiles);
             isTargetTex = IsFileAllowed(filename, allowedTextureFiles);
@@ -722,30 +1169,40 @@ namespace PoConverter
             {
                 isTargetBin = false;
                 isTargetCmn = false;
-                isTargetTex = false;
             }
 
             bool isNeutralAllowed = folderFilters.Keys.Any(k => pathParts.Contains(k, StringComparer.OrdinalIgnoreCase) && !k.Equals("hact", StringComparison.OrdinalIgnoreCase)) || isAuth;
 
-            if (isTargetBin || isTargetCmn || isTargetTex) 
+            if (isTargetTex)
+            {
+                if (isInEFolder) return true;
+
+                bool hasEVariant = allFiles.Any(f => 
+                    Path.GetFileName(f).Equals(filename, StringComparison.OrdinalIgnoreCase) && 
+                    (f.Contains("\\e\\", StringComparison.OrdinalIgnoreCase) || f.Contains("/e/", StringComparison.OrdinalIgnoreCase)));
+
+                return !hasEVariant;
+            }
+
+            if (isTargetBin || isTargetCmn) 
             {
                 return isInEFolder || isNeutralAllowed;
             }
             return false;
         }
 
-        private static bool ProcessExtractionFile(string binPath, string ogFileDir, string ogJsonDir, string workspaceDir, string language, string dictFile, string rearmpCmd, string rearmpArgsPrefix, HashSet<string> allowedBinFiles, HashSet<string> allowedTextureFiles, HashSet<string> allowedCmnFiles, Dictionary<string, List<string>> folderFilters)
+        private static bool ProcessExtractionFile(string binPath, PipelineContext ctx, List<string> allFiles)
         {
             string filename = Path.GetFileName(binPath);
             string fileDir = Path.GetDirectoryName(binPath) ?? "";
             string relPath = GetRelativePath(fileDir);
 
-            if (!ShouldProcessFile(filename, relPath, allowedBinFiles, allowedTextureFiles, allowedCmnFiles, folderFilters, out bool isTargetBin, out bool isTargetTex, out bool isTargetCmn))
+            if (!ShouldProcessFile(filename, relPath, ctx.AllowedBinFiles, ctx.AllowedTextureFiles, ctx.AllowedCmnFiles, ctx.FolderFilters, allFiles, out bool isTargetBin, out bool isTargetTex, out bool isTargetCmn))
             {
                 return false;
             }
 
-            string currentOgFileDir = Path.Combine(ogFileDir, relPath);
+            string currentOgFileDir = Path.Combine(ctx.OgFileDir, relPath);
             Directory.CreateDirectory(currentOgFileDir);
 
             string copiedBinPath = Path.Combine(currentOgFileDir, filename);
@@ -753,8 +1210,8 @@ namespace PoConverter
 
             PrintHeader($"\n[*] Processing Targeted File: {filename}");
             
-            string currentOgJsonDir = Path.Combine(ogJsonDir, relPath);
-            string currentWorkspaceDir = Path.Combine(workspaceDir, relPath);
+            string currentOgJsonDir = Path.Combine(ctx.OgJsonDir, relPath);
+            string currentWorkspaceDir = Path.Combine(ctx.WorkspaceDir, relPath);
 
             bool kept = false;
             string poPath = Path.Combine(currentWorkspaceDir, filename.Replace(".bin", ".po"));
@@ -776,7 +1233,7 @@ namespace PoConverter
                     if (texts.Count > 0)
                     {
                         Directory.CreateDirectory(currentWorkspaceDir);
-                        PoConverter.DictToPo(texts, poPath, language);
+                        PoConverter.DictToPo(texts, poPath, ctx.Language);
                         PrintSuccess($"  [OK] Created PO file: {relPath}\\{Path.GetFileName(poPath)}");
                         kept = true;
                     }
@@ -793,7 +1250,7 @@ namespace PoConverter
             else if (isTargetBin)
             {
                 PrintStep("  -> [Pipeline] Executing reARMP for JSON extraction...");
-                if (RunProcess(rearmpCmd, $"{rearmpArgsPrefix}\"{copiedBinPath}\""))
+                if (RunProcess(ctx.RearmpCmd, $"\"{copiedBinPath}\""))
                 {
                     string generatedJsonPathInPlace = copiedBinPath + ".json";
                     string targetJsonPath = Path.Combine(currentOgJsonDir, filename + ".json");
@@ -809,11 +1266,21 @@ namespace PoConverter
                         PrintStep("  -> [PoConverter] Generating PO file internally...");
                         try
                         {
-                            int count = PoConverter.JsonToPo(targetJsonPath, poPath, dictFile, language);
+                            int count = PoConverter.JsonToPo(targetJsonPath, poPath, ctx.DictFile, ctx.Language, ctx.CachedDict);
                             if (count > 0)
                             {
                                 PrintSuccess($"  [OK] Created PO file: {relPath}\\{Path.GetFileName(poPath)}");
                                 kept = true;
+
+                                // DIVIDE AUTOMATICAMENTE SOUND_AUTH.PO
+                                if (ctx.SplitSoundAuth && filename.Equals("sound_auth.bin", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    string splitDir = Path.Combine(currentWorkspaceDir, "sound_auth_split");
+                                    PrintStep($"  -> [PoSplitter] Splitting sound_auth.po into smaller files...");
+                                    Yakuza6LocalizationTool.PoSplitterMerger.SplitPoFile(poPath, splitDir);
+                                    File.Delete(poPath); // Cancella il file intero per non confondere i traduttori
+                                    PrintSuccess($"  [OK] Split sound_auth.po into {GetRelativeWorkspacePath(splitDir, ctx.WorkspaceDir)}");
+                                }
                             }
                             else
                             {
@@ -844,13 +1311,13 @@ namespace PoConverter
             return kept;
         }
 
-        private static bool ProcessRecreationPoFile(string poPath, string workspaceDir, string ogFileDir, string ogJsonDir, string outputDir, string convertedJsonDir, string dictFile, string rearmpCmd, string rearmpArgsPrefix, HashSet<string> allowedCmnFiles, string warningsFile)
+        private static bool ProcessRecreationPoFile(string poPath, PipelineContext ctx)
         {
             string poFilename = Path.GetFileName(poPath);
-            string relPath = GetRelativeWorkspacePath(poPath, workspaceDir);
+            string relPath = GetRelativeWorkspacePath(poPath, ctx.WorkspaceDir);
 
-            string currentOgJsonDir = Path.Combine(ogJsonDir, relPath);
-            string currentOutputDir = Path.Combine(outputDir, relPath);
+            string currentOgJsonDir = Path.Combine(ctx.OgJsonDir, relPath);
+            string currentOutputDir = Path.Combine(ctx.OutputDir, relPath);
             Directory.CreateDirectory(currentOutputDir);
 
             string baseName = poFilename.Replace(".po", "");
@@ -858,11 +1325,11 @@ namespace PoConverter
             string ogJsonPath = Path.Combine(currentOgJsonDir, jsonFilename);
             string outputJsonPath = Path.Combine(currentOutputDir, jsonFilename);
 
-            bool isCmn = IsFileAllowed(baseName + ".bin", allowedCmnFiles);
+            bool isCmn = IsFileAllowed(baseName + ".bin", ctx.AllowedCmnFiles);
             if (isCmn)
             {
                 PrintStep($"  -> [BinaryScanner] Injecting translation from {poFilename} into .bin...");
-                string originalCmnPath = Path.Combine(ogFileDir, relPath, baseName + ".bin");
+                string originalCmnPath = Path.Combine(ctx.OgFileDir, relPath, baseName + ".bin");
                 string outputCmnPath = Path.Combine(currentOutputDir, baseName + ".bin");
 
                 if (!File.Exists(originalCmnPath))
@@ -874,7 +1341,7 @@ namespace PoConverter
                 try
                 {
                     var translatedTexts = PoConverter.PoToDict(poPath);
-                    Yakuza6LocalizationTool.CmnTextManager.InjectTextsAndSave(originalCmnPath, outputCmnPath, translatedTexts, warningsFile);
+                    Yakuza6LocalizationTool.CmnTextManager.InjectTextsAndSave(originalCmnPath, outputCmnPath, translatedTexts, ctx.WarningsFile);
                     PrintSuccess($"  [OK] CMN file updated successfully in {relPath}.");
                     return true;
                 }
@@ -894,7 +1361,7 @@ namespace PoConverter
             PrintStep($"  -> [PoConverter] Injecting translation from {poFilename} into JSON...");
             try
             {
-                PoConverter.PoToJson(poPath, outputJsonPath, ogJsonPath, dictFile);
+                PoConverter.PoToJson(poPath, outputJsonPath, ogJsonPath, ctx.DictFile);
             }
             catch (Exception ex)
             {
@@ -905,7 +1372,7 @@ namespace PoConverter
             PrintStep("  -> [Pipeline] Executing reARMP to recreate .bin...");
             string targetBinPath = Path.Combine(currentOutputDir, baseName + ".bin");
 
-            if (RunProcess(rearmpCmd, $"{rearmpArgsPrefix}\"{outputJsonPath}\""))
+            if (RunProcess(ctx.RearmpCmd, $"\"{outputJsonPath}\""))
             {
                 string generatedBinPathInPlace = Path.Combine(currentOutputDir, jsonFilename + ".bin");
                 string? actualGeneratedBin = FindGeneratedFile(jsonFilename + ".bin", generatedBinPathInPlace);
@@ -925,7 +1392,7 @@ namespace PoConverter
 
                     if (File.Exists(outputJsonPath))
                     {
-                        string targetConvertedJsonDir = Path.Combine(convertedJsonDir, relPath);
+                        string targetConvertedJsonDir = Path.Combine(ctx.ConvertedJsonDir, relPath);
                         Directory.CreateDirectory(targetConvertedJsonDir);
                         string targetConvertedJsonPath = Path.Combine(targetConvertedJsonDir, jsonFilename);
                         if (File.Exists(targetConvertedJsonPath)) File.Delete(targetConvertedJsonPath);
@@ -1040,6 +1507,31 @@ namespace PoConverter
                     string relativePath = file.Substring(dir.Length).TrimStart('\\', '/');
                     PrintStep($"    -> Adding: {relativePath}");
                 }
+            }
+        }
+
+
+        private static void SafeDeleteDirectory(string path)
+        {
+            try
+            {
+                if (Directory.Exists(path)) Directory.Delete(path, true);
+            }
+            catch (Exception ex)
+            {
+                PrintStep($"  [!] Could not delete directory '{Path.GetFileName(path)}': {ex.Message}");
+            }
+        }
+
+        private static void SafeDeleteFile(string path)
+        {
+            try
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
+            catch (Exception ex)
+            {
+                PrintStep($"  [!] Could not delete file '{Path.GetFileName(path)}': {ex.Message}");
             }
         }
     }

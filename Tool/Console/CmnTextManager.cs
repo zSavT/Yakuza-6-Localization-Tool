@@ -29,7 +29,7 @@ namespace Yakuza6LocalizationTool
                     if (currentStr.Count == 0) startOffset = i;
                     currentStr.Add(b);
                 }
-                else if (b == 0 && currentStr.Count >= 3)
+                else if (b == 0 && currentStr.Count >= 2)
                 {
                     try
                     {
@@ -56,10 +56,13 @@ namespace Yakuza6LocalizationTool
                 }
             }
 
-            // Filter out any string that repeats more than 3 times
+            // Filter out any string that repeats more than 3 times, unless it looks like a natural language string
             if (extractedTexts.Count > 0 && textOccurrences.Count > 0)
             {
-                var keysToRemove = extractedTexts.Where(kvp => textOccurrences[kvp.Value] > 3).Select(kvp => kvp.Key).ToList();
+                var keysToRemove = extractedTexts
+                    .Where(kvp => textOccurrences[kvp.Value] > 3 && !IsNaturalLanguage(kvp.Value))
+                    .Select(kvp => kvp.Key)
+                    .ToList();
                 foreach (var key in keysToRemove)
                 {
                     extractedTexts.Remove(key);
@@ -106,9 +109,7 @@ namespace Yakuza6LocalizationTool
                             string originalText = Encoding.UTF8.GetString(origBytes.ToArray());
 
                             string warningMsg = $"[!] WARNING: Translation for offset 0x{hexOffset} in {Path.GetFileName(originalCmnPath)} exceeds {maxBytes} bytes. Truncating!";
-                            Console.ForegroundColor = ConsoleColor.Yellow;
-                            Console.WriteLine($"  {warningMsg}");
-                            Console.ResetColor();
+                            global::PoConverter.Pipeline.PrintWarning($"  {warningMsg}");
 
                             if (!string.IsNullOrEmpty(warningsFilePath))
                             {
@@ -135,11 +136,31 @@ namespace Yakuza6LocalizationTool
                         for (int i = tradBytes.Length; i < maxBytes; i++)
                             data[offset + i] = 0x00;
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        global::PoConverter.Pipeline.PrintWarning($"  [!] Warning: Failed to inject text at {contextId}: {ex.Message}");
+                    }
                 }
             }
 
             File.WriteAllBytes(outputCmnPath, data);
+        }
+
+        private static bool IsNaturalLanguage(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return false;
+
+            foreach (char c in text)
+            {
+                if (char.IsLetter(c) || char.IsWhiteSpace(c)) continue;
+
+                // Allow common punctuation and symbols typical in natural language
+                if (c == '\'' || c == '’' || c == '-' || c == ',' || c == '.' || c == '!' || c == '?' || c == '"' || c == ':') continue;
+
+                return false;
+            }
+
+            return true;
         }
     }
 }

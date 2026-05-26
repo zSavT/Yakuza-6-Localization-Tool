@@ -73,10 +73,20 @@ Instead of passing arguments every time, you can edit the `config.json` file in 
   "skipTextures": false,
   "cleanAll": false,
   "autoYes": true,
-  "quietLogs": true
+  "quietLogs": true,
+  "custom-db": ""
 }
 ```
 *Arguments passed via the command line will override these defaults.*
+
+### Custom DB Mode
+If you need to process a specific set of `.bin` files located in a custom folder (for instance, a standalone database directory), you can specify its path under the `"custom-db"` key in `config.json`.
+
+When `"custom-db"` is configured and has a value:
+- The game path (`gamePath`) is completely bypassed (it is not required, requested, or validated).
+- **Extraction (Phase 1)**: The tool will scan the custom folder recursively for `.bin` files, copy them to `og file`, extract them to `.json` with `reARMP.exe`, and convert their strings into `.po` translation files inside the `workspace` directory.
+- **Recreation (Phase 2)**: The tool will inject modified `.po` files from the workspace into the `.json` files and compile them back to `.bin` via `reARMP.exe` into the `output` directory, skipping any `.par` archive extraction or repacking.
+
 
 
 
@@ -107,7 +117,16 @@ Handles bidirectional conversion between reARMP's JSON output and standard Gette
 - **`PoToJson`**: Reads the `.po` line by line. Features error-handling to prevent crashes on malformed blocks. It reconstructs multi-line strings, finds the JSON token via the path stored in `msgctxt`, and overwrites the text. Writes the output enforcing LF line-endings and 2-space indentation to strictly match the expected format of `reARMP`.
 
 ### 3. `CmnTextManager.cs` - The Binary Scanner
-A custom raw binary scanner for `.cmn` cutscene files. It reads `.bin` files byte-by-byte to extract translatable strings without relying on external decompilers, automatically filtering out internal engine IDs, repetitive strings, and purely Japanese debug text. During recreation, it safely injects the translated text back into the exact memory offset, truncating it if it exceeds the original byte limit to prevent file corruption.
+A custom raw binary scanner for `.cmn` cutscene files. It reads `.bin` files byte-by-byte to extract translatable strings without relying on external decompilers, automatically filtering out internal engine IDs, repetitive strings, and purely Japanese debug text.
+
+To keep the extracted files clean of random binary noise, the scanner utilizes advanced heuristics:
+- **Alphabet constraints**: Extracts only text using Latin, Western European accented, or Japanese characters, immediately discarding Cyrillic, Armenian, or other non-pertinent alphabets.
+- **Vowel and ratio check**: Latin text must contain at least one vowel, and at least 50% of the characters must be letters.
+- **Length and repetition exemptions**: Allows short 2-character words (if matching a whitelist, e.g., "no", "ok"), and exempts natural language strings from the repetition limit.
+- **System text auto-tagging**: Single lowercase words are annotated in the `.po` files with a `#. WARNING` comment indicating they are likely untranslatable system identifiers (e.g., "substory", "kiryu").
+
+During recreation, it safely injects the translated text back into the exact memory offset, truncating it at a valid UTF-8 character boundary if it exceeds the original byte limit to prevent file corruption.
+
 
 ### 4. The `dictionary.json` Structure
 The dictionary file tells the tool which files to process and where to find the text inside the JSONs. It has two main sections:

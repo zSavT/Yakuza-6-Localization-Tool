@@ -5,5 +5,6 @@
   "skipTextures": false,
   "cleanAll": false,
   "autoYes": false,
-  "quietLogs": false
+  "quietLogs": false,
+  "splitSoundAuth": false
 }

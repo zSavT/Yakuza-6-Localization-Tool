@@ -36,20 +36,20 @@ namespace PoConverter
         {
             string inputFile = args[0];
             string outputFile = args[1];
-            string typeConvertion = args[2];
+            string typeConversion = args[2];
             string? originalJsonFile = args.Length > 3 ? args[3] : null;
             string? dictionaryFile = args.Length > 4 ? args[4] : null;
 
 
-            if (!checkArgs(inputFile, outputFile, typeConvertion, originalJsonFile, dictionaryFile))
+            if (!CheckArgs(inputFile, outputFile, typeConversion, originalJsonFile, dictionaryFile))
             {
                 return;
             }
-            if (typeConvertion == "po2json")
+            if (typeConversion == "po2json")
             {
                 PoToJson(inputFile, outputFile, originalJsonFile, dictionaryFile);
             }
-            else if (typeConvertion == "json2po")
+            else if (typeConversion == "json2po")
             {
                 JsonToPo(inputFile, outputFile, dictionaryFile);
             }
@@ -77,6 +77,7 @@ namespace PoConverter
             Console.WriteLine("  -c, --clean-all         Delete workspace and og files after recreation, keeping only output.");
             Console.WriteLine("  -y, --yes               Skip confirmation prompts and auto-exit.");
             Console.WriteLine("  -q, --quiet             Suppress output logs from external tools (reARMP, ParTool).");
+            Console.WriteLine("  -ns, --no-split         Disable automatic splitting of sound_auth.po file.");
             Console.WriteLine("  -d, --dict <path>       Specify a custom dictionary file (default: dictionary.json).");
             Console.WriteLine();
             Console.WriteLine("Note: You can also use 'config.json' to set default paths and options permanently.");
@@ -89,7 +90,7 @@ namespace PoConverter
             
         }
 
-        private static bool checkArgs(string inputFile, string outputFile, string typeConvertion, string? originalJsonFile, string? dictionaryFile)
+        private static bool CheckArgs(string inputFile, string outputFile, string typeConversion, string? originalJsonFile, string? dictionaryFile)
         {
             if (!File.Exists(inputFile))
             {
@@ -101,12 +102,12 @@ namespace PoConverter
                 Pipeline.PrintError($"[!] File {outputFile} already exists.");
                 return false;
             }
-            if (typeConvertion != "po2json" && typeConvertion != "json2po")
+            if (typeConversion != "po2json" && typeConversion != "json2po")
             {
-                Pipeline.PrintError($"[!] Type convertion {typeConvertion} is not valid.");
+                Pipeline.PrintError($"[!] Type convertion {typeConversion} is not valid.");
                 return false;
             }
-            if (typeConvertion == "po2json" && !File.Exists(originalJsonFile))
+            if (typeConversion == "po2json" && !File.Exists(originalJsonFile))
             {
                 Pipeline.PrintError($"[!] For po2json, you must provide the original JSON file as the 4th argument. File {originalJsonFile} does not exist.");
                 return false;
@@ -122,14 +123,18 @@ namespace PoConverter
         // ------------
         // STRUCTURE PARSING
         // ------------
-        private static List<List<string>> GetStructures(string? dictionaryFile, string? targetFile)
+        private static List<List<string>> GetStructures(string? dictionaryFile, string? targetFile, JObject? cachedDict = null)
         {
             List<List<string>> structures = new List<List<string>> { new List<string> { "", "text" } }; // Fallback structure
 
-            if (!string.IsNullOrEmpty(dictionaryFile) && File.Exists(dictionaryFile) && !string.IsNullOrEmpty(targetFile))
+            if (!string.IsNullOrEmpty(targetFile))
             {
-                string dictJson = File.ReadAllText(dictionaryFile);
-                JObject? dict = JObject.Parse(dictJson);
+                JObject? dict = cachedDict;
+                if (dict == null && !string.IsNullOrEmpty(dictionaryFile) && File.Exists(dictionaryFile))
+                {
+                    string dictJson = File.ReadAllText(dictionaryFile);
+                    dict = JObject.Parse(dictJson);
+                }
                 string fileName = Path.GetFileName(targetFile) ?? string.Empty;
 
                 if (dict != null)
@@ -249,27 +254,42 @@ namespace PoConverter
 
         private static string UnescapeString(string text)
         {
-            return text.Replace("\\n", "\n")
-                       .Replace("\\r", "\r")
-                       .Replace("\\\"", "\"")
-                       .Replace("\\\\", "\\");
+            var sb = new StringBuilder(text.Length);
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (text[i] == '\\' && i + 1 < text.Length)
+                {
+                    switch (text[i + 1])
+                    {
+                        case 'n': sb.Append('\n'); i++; break;
+                        case 'r': sb.Append('\r'); i++; break;
+                        case '"': sb.Append('"'); i++; break;
+                        case '\\': sb.Append('\\'); i++; break;
+                        default: sb.Append(text[i]); break;
+                    }
+                }
+                else
+                {
+                    sb.Append(text[i]);
+                }
+            }
+            return sb.ToString();
         }
 
-        private static void ExtractValues(JToken? currentToken, List<string> remainingPath, List<string> currentPath, List<(string Key, string Text)> risultati)
+        private static void ExtractValues(JToken? currentToken, List<string> structure, int structureIndex, List<string> currentPath, List<(string Key, string Text)> results)
         {
             if (currentToken == null) return;
 
-            if (remainingPath.Count == 0)
+            if (structureIndex >= structure.Count)
             {
                 if (currentToken.Type == JTokenType.String)
                 {
-                    risultati.Add((string.Join("||", currentPath), currentToken.ToString()));
+                    results.Add((string.Join("||", currentPath), currentToken.ToString()));
                 }
                 return;
             }
 
-            string nextKey = remainingPath[0];
-            List<string> nextRemaining = remainingPath.Skip(1).ToList();
+            string nextKey = structure[structureIndex];
 
             if (nextKey == "*")
             {
@@ -277,8 +297,9 @@ namespace PoConverter
                 {
                     foreach (var prop in obj.Properties())
                     {
-                        var newPath = new List<string>(currentPath) { prop.Name };
-                        ExtractValues(prop.Value, nextRemaining, newPath, risultati);
+                        currentPath.Add(prop.Name);
+                        ExtractValues(prop.Value, structure, structureIndex + 1, currentPath, results);
+                        currentPath.RemoveAt(currentPath.Count - 1);
                     }
                 }
             }
@@ -286,8 +307,9 @@ namespace PoConverter
             {
                 if (currentToken is JObject obj && obj.ContainsKey(nextKey))
                 {
-                    var newPath = new List<string>(currentPath) { nextKey };
-                    ExtractValues(obj[nextKey], nextRemaining, newPath, risultati);
+                    currentPath.Add(nextKey);
+                    ExtractValues(obj[nextKey], structure, structureIndex + 1, currentPath, results);
+                    currentPath.RemoveAt(currentPath.Count - 1);
                 }
             }
         }
@@ -295,30 +317,41 @@ namespace PoConverter
         // ------------
         // JSON TO PO
         // ------------
-        internal static int JsonToPo(string inputFile, string outputFile, string? dictionaryFile, string language = "it")
+        internal static int JsonToPo(string inputFile, string outputFile, string? dictionaryFile, string language = "it", JObject? cachedDict = null)
         {
             List<string> lines = new List<string>();
             string jsonString = File.ReadAllText(inputFile);
             JObject jsonObject = JObject.Parse(jsonString) ?? new JObject();
             StringBuilder poContent = new StringBuilder();
-            List<List<string>> structures = GetStructures(dictionaryFile, inputFile);
+            List<List<string>> structures = GetStructures(dictionaryFile, inputFile, cachedDict);
 
             AppendPoHeader(poContent, language);
 
-            var risultati = new List<(string Key, string Text)>();
+            var results = new List<(string Key, string Text)>();
 
             foreach (var structure in structures)
             {
                 // Start recursion directly from the root object
-                ExtractValues(jsonObject, structure, new List<string>(), risultati);
+                ExtractValues(jsonObject, structure, 0, new List<string>(), results);
             }
 
             var validResults = new List<(string Key, string Text)>();
-            foreach (var item in risultati)
+            foreach (var item in results)
             {
                 if (!IsValidTranslationString(item.Text)) continue;
                 
                 validResults.Add(item);
+
+                string val = item.Text.Trim();
+                if (val.Length > 0 && !val.Contains(" "))
+                {
+                    char firstLetter = val.FirstOrDefault(char.IsLetter);
+                    if (firstLetter != default(char) && char.IsLower(firstLetter))
+                    {
+                        poContent.AppendLine("#. WARNING: Might be a system string/identifier (do not translate).");
+                    }
+                }
+                
                 poContent.AppendLine($"msgctxt \"{EscapeString(item.Key)}\"");
                 poContent.AppendLine($"msgid \"{EscapeString(item.Text)}\"");
                 poContent.AppendLine($"msgstr \"\"");
@@ -332,6 +365,30 @@ namespace PoConverter
             return validResults.Count;
         }
 
+        private static readonly HashSet<string> CodeKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "true", "false", "null", "void", "int", "float", "double", "string", "bool", "char",
+            "class", "struct", "import", "return", "break", "continue", "if", "else", "for", "while",
+            "switch", "case", "default", "public", "private", "protected", "internal", "static",
+            "new", "this", "base", "undefined", "var", "const", "let", "function", "fn",
+            "func", "def", "and", "or", "not", "xor"
+        };
+
+        private static readonly HashSet<string> ValidTwoLetterWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "no", "ok", "oh", "ah", "eh", "uh", "hi", "ha", "ho"
+        };
+
+        private static readonly HashSet<string> ValidThreeLetterWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            // English common words (real standalone words only)
+            "are", "but", "not", "you", "all", "any", "can", "one", "out", "day", "get", "how", "man", "new", "now", "old", "see", "two", "way", "who", "boy", "cat", "dog", "run", "yes", "cap", "cup", "hat", "bag", "box", "car", "fly", "cry", "try", "sky", "key", "bed", "red", "big", "bad", "hot", "cow", "cut", "add", "end", "eat", "far", "sun", "sea", "ice", "air", "war", "law", "age", "job", "son", "kid", "dad", "mom", "sir", "god", "lie", "ask", "put", "let", "set", "sat", "met", "got", "ran", "saw", "did", "may", "own", "off", "too", "yet", "low", "top", "fit", "sad", "mad", "use", "hey", "wow", "bye", "why",
+            // Japanese Romanized Names / Surnames
+            "oka", "ren", "aki", "ken", "yui", "ryo", "han", "oda", "abe", "ito", "uno", "ego", "jin", "kai", "ran",
+            // Gaming & Technical Acronyms (often standalone in lists or UI)
+            "exp", "hp", "mp", "lvl", "max", "min", "cpu", "gpu", "hud", "app", "dev", "log", "msg", "txt", "bin", "dds", "par", "cmn", "win", "npc", "fps", "rpg", "map", "key", "nav", "sfx", "bgm", "vfx", "com"
+        };
+
         // ------------
         // TEXT VALIDATION
         // ------------
@@ -339,13 +396,71 @@ namespace PoConverter
         {
             if (string.IsNullOrWhiteSpace(text)) return false;
 
-            bool hasSpace = text.Contains(" ");
             var letters = text.Where(char.IsLetter).ToList();
-            bool hasLetters = letters.Any();
+            if (letters.Count < 2) return false; // Require at least 2 letters in any valid string (prevents single-letter noise with spaces like " A", " N", "P ")
 
-            if (requireSpaceAndLetters && (!hasSpace || !hasLetters)) return false;
+            // 1. Alphabet Range Check: Filter out letters from foreign/exotic alphabets (e.g. Cyrillic, Armenian)
+            foreach (char c in text)
+            {
+                if (char.IsLetter(c))
+                {
+                    bool isLatin = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+                    bool isAccent = (c >= '\u00C0' && c <= '\u00FF');
+                    bool isJapanese = (c >= '\u3040' && c <= '\u30FF') || (c >= '\u3400' && c <= '\u4DBF') || (c >= '\u4E00' && c <= '\u9FFF');
 
-            bool isOnlyJapanese = hasLetters && letters.All(c => (c >= '\u3040' && c <= '\u30ff') || (c >= '\u3400' && c <= '\u4dbf') || (c >= '\u4e00' && c <= '\u9fff'));
+                    if (!isLatin && !isAccent && !isJapanese)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            // 2. Letter Ratio Check: at least 50% of the string must be actual letters to filter out symbol-heavy noise (e.g. ">b; =")
+            double ratio = (double)letters.Count / text.Length;
+            if (ratio < 0.50) return false;
+
+            bool hasSpace = text.Contains(" ");
+
+            if (requireSpaceAndLetters)
+            {
+                if (!hasSpace)
+                {
+                    // For single words (no spaces)
+                    
+                    // Extract only letters to validate the word itself (prevents noise like "yv:")
+                    string letterSeq = new string(text.Where(char.IsLetter).ToArray());
+
+                    if (letterSeq.Length < 2) return false; // Single letters are not valid standalone words
+
+                    // Whitelist for 2-character words (prevents 2-char random noise like "xp", "qw")
+                    if (letterSeq.Length == 2 && !ValidTwoLetterWords.Contains(letterSeq)) return false;
+
+                    // Whitelist for 3-character words (prevents sequential technical noise like "PAE", "XAF")
+                    if (letterSeq.Length == 3 && !ValidThreeLetterWords.Contains(letterSeq)) return false;
+
+                    // Vowel check for Latin words (prevents consonant-only gibberish like "sft", "qwr")
+                    var latinLetters = letterSeq.Where(c => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')).ToList();
+                    if (latinLetters.Any() && !latinLetters.Any(c => "aeiouyAEIOUY".Contains(c))) return false;
+
+                    // Skip words with three identical letters in a row (e.g., "aaa", "zzz")
+                    if (Regex.IsMatch(text, @"([a-zA-Z])\1\1")) return false;
+
+                    // Skip code keywords
+                    if (CodeKeywords.Contains(text)) return false;
+
+                    // Skip camelCase (e.g., "myVariable", "getPlayer")
+                    if (Regex.IsMatch(text, @"[a-z][A-Z]")) return false;
+
+                    // Skip strings with digits (e.g., "Btn01", "Text2")
+                    if (text.Any(char.IsDigit)) return false;
+
+                    // Skip technical strings with code-like characters
+                    char[] codeChars = { '(', ')', '{', '}', '[', ']', '<', '>', ';', '=', '+', '*', '/', '&', '|', '%', '$', '@', '^', '`' };
+                    if (text.Any(c => codeChars.Contains(c))) return false;
+                }
+            }
+
+            bool isOnlyJapanese = letters.All(c => (c >= '\u3040' && c <= '\u30ff') || (c >= '\u3400' && c <= '\u4dbf') || (c >= '\u4e00' && c <= '\u9fff'));
             if (isOnlyJapanese) return false;
 
             bool isInternalId = text.Contains("_") || text.Contains(".dds") || text.Contains(".bin") || text.Contains("[IK]");
@@ -375,6 +490,16 @@ namespace PoConverter
                 if (parts.Length >= 4 && parts[0] == "Offset" && parts[2] == "Len")
                 {
                     poContent.AppendLine($"#. Max bytes: {parts[3]}");
+                }
+
+                string val = kvp.Value.Trim();
+                if (val.Length > 0 && !val.Contains(" "))
+                {
+                    char firstLetter = val.FirstOrDefault(char.IsLetter);
+                    if (firstLetter != default(char) && char.IsLower(firstLetter))
+                    {
+                        poContent.AppendLine("#. WARNING: Might be a system string/identifier (do not translate).");
+                    }
                 }
                 
                 poContent.AppendLine($"msgctxt \"{EscapeString(kvp.Key)}\"");
