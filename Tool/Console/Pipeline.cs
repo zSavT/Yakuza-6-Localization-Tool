@@ -299,6 +299,8 @@ namespace PoConverter
                 string currentWorkspaceDir = Path.Combine(ctx.WorkspaceDir, relDir);
 
                 PrintStep("  -> [Pipeline] Executing reARMP for JSON extraction...");
+                DeleteFileIfExists(Path.Combine(Environment.CurrentDirectory, filename + ".json"));
+                DeleteFileIfExists(copiedBinPath + ".json");
                 if (RunProcess(ctx.RearmpCmd, $"\"{copiedBinPath}\""))
                 {
                     string generatedJsonPathInPlace = copiedBinPath + ".json";
@@ -501,6 +503,8 @@ namespace PoConverter
 
                 PrintStep("  -> [Pipeline] Executing reARMP to recreate .bin...");
                 string targetBinPath = Path.Combine(currentOutputDir, baseName + ".bin");
+                DeleteFileIfExists(Path.Combine(currentOutputDir, jsonFilename + ".bin"));
+                DeleteFileIfExists(Path.Combine(Environment.CurrentDirectory, jsonFilename + ".bin"));
 
                 if (RunProcess(ctx.RearmpCmd, $"\"{outputJsonPath}\""))
                 {
@@ -902,11 +906,15 @@ namespace PoConverter
             {
                 foreach (var process in Process.GetProcessesByName(name))
                 {
-                    if (!process.HasExited)
+                    try
                     {
-                        process.Kill();
+                        if (!process.HasExited)
+                        {
+                            process.Kill();
+                        }
                     }
-                    process.Dispose();
+                    catch (InvalidOperationException) { }
+                    try { process.Dispose(); } catch { }
                 }
             }
             catch (Exception ex)
@@ -940,7 +948,12 @@ namespace PoConverter
                         process.BeginOutputReadLine();
                         process.BeginErrorReadLine();
 
-                        process.WaitForExit();
+                        if (!process.WaitForExit(120000)) // 2 minutes timeout
+                        {
+                            try { process.Kill(); } catch { }
+                            PrintError($"  [!] Timeout: {toolName} took longer than 2 minutes and was terminated.");
+                            return false;
+                        }
                         if (process.ExitCode != 0)
                         {
                             PrintError($"  [!] {toolName} failed with exit code {process.ExitCode}");
@@ -1262,6 +1275,8 @@ namespace PoConverter
             else if (isTargetBin)
             {
                 PrintStep("  -> [Pipeline] Executing reARMP for JSON extraction...");
+                DeleteFileIfExists(Path.Combine(Environment.CurrentDirectory, filename + ".json"));
+                DeleteFileIfExists(copiedBinPath + ".json");
                 if (RunProcess(ctx.RearmpCmd, $"\"{copiedBinPath}\""))
                 {
                     string generatedJsonPathInPlace = copiedBinPath + ".json";
@@ -1287,8 +1302,15 @@ namespace PoConverter
                                     string splitDir = Path.Combine(currentWorkspaceDir, "sound_auth_split");
                                     PrintStep($"  -> [PoSplitter] Splitting sound_auth.po into smaller files...");
                                     Yakuza6LocalizationTool.PoSplitterMerger.SplitPoFile(poPath, splitDir);
-                                    File.Delete(poPath); // Cancella il file intero per non confondere i traduttori
-                                    PrintSuccess($"  [OK] Split sound_auth.po into {GetRelativeWorkspacePath(splitDir, ctx.WorkspaceDir)}");
+                                    if (Directory.Exists(splitDir) && Directory.GetFiles(splitDir, "*.po").Length > 0)
+                                    {
+                                        File.Delete(poPath); // Cancella il file intero per non confondere i traduttori
+                                        PrintSuccess($"  [OK] Split sound_auth.po into {GetRelativeWorkspacePath(splitDir, ctx.WorkspaceDir)}");
+                                    }
+                                    else
+                                    {
+                                        PrintError($"  [!] Error: sound_auth.po split failed. Original PO kept.");
+                                    }
                                 }
                             }
                             else
@@ -1380,6 +1402,8 @@ namespace PoConverter
 
             PrintStep("  -> [Pipeline] Executing reARMP to recreate .bin...");
             string targetBinPath = Path.Combine(currentOutputDir, baseName + ".bin");
+            DeleteFileIfExists(Path.Combine(currentOutputDir, jsonFilename + ".bin"));
+            DeleteFileIfExists(Path.Combine(Environment.CurrentDirectory, jsonFilename + ".bin"));
 
             if (RunProcess(ctx.RearmpCmd, $"\"{outputJsonPath}\""))
             {
@@ -1523,6 +1547,19 @@ namespace PoConverter
                 File.Move(actualGeneratedPath, targetPath);
             }
             return true;
+        }
+
+        private static void DeleteFileIfExists(string path)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    File.SetAttributes(path, File.GetAttributes(path) & ~FileAttributes.ReadOnly);
+                    File.Delete(path);
+                }
+            }
+            catch { }
         }
 
         // ------------

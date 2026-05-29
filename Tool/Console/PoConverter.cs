@@ -611,6 +611,7 @@ namespace PoConverter
                 {
                     if (currentSection == "msgid") currentMsgId += ExtractString(trimmedLine);
                     else if (currentSection == "msgstr") currentMsgStr += ExtractString(trimmedLine);
+                    else if (currentSection == "msgctxt") currentKey += ExtractString(trimmedLine);
                 }
                 else if (string.IsNullOrEmpty(trimmedLine) && currentKey != null)
                 {

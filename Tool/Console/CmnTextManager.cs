@@ -55,6 +55,25 @@ namespace Yakuza6LocalizationTool
                 }
             }
 
+            if (currentLength >= 2)
+            {
+                try
+                {
+                    string text = utf8.GetString(data, startOffset, currentLength);
+                    if (global::PoConverter.PoConverter.IsValidTranslationString(text, true))
+                    {
+                        string contextId = $"Offset_0x{startOffset:X}_Len_{currentLength}";
+                        extractedTexts[contextId] = text;
+
+                        if (textOccurrences.ContainsKey(text))
+                            textOccurrences[text]++;
+                        else
+                            textOccurrences[text] = 1;
+                    }
+                }
+                catch (ArgumentException) { }
+            }
+
             // Filter out any string that repeats too many times, unless it looks like a natural language string.
             // Strings longer than 7 characters have a higher repetition tolerance (10 occurrences instead of 3).
             if (extractedTexts.Count > 0 && textOccurrences.Count > 0)
@@ -132,6 +151,12 @@ namespace Yakuza6LocalizationTool
                                 translatedText = translatedText.Substring(0, translatedText.Length - 1);
                             }
                             tradBytes = Encoding.UTF8.GetBytes(translatedText);
+                        }
+
+                        if (offset + maxBytes > data.Length)
+                        {
+                            global::PoConverter.Pipeline.PrintWarning($"  [!] Warning: Offset 0x{hexOffset} + Len {maxBytes} exceeds binary size {data.Length}. Skipping.");
+                            continue;
                         }
 
                         // Inject bytes

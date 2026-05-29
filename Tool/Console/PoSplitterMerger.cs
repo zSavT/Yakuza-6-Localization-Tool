@@ -42,6 +42,7 @@ namespace Yakuza6LocalizationTool
                                 filesContent[currentCategory] = new StringBuilder();
                             
                             filesContent[currentCategory].AppendLine(currentBlock.ToString().TrimEnd());
+                            filesContent[currentCategory].AppendLine();
                         }
                         currentBlock.Clear();
                         currentCategory = "uncategorized";
@@ -68,6 +69,7 @@ namespace Yakuza6LocalizationTool
                 if (!filesContent.ContainsKey(currentCategory))
                     filesContent[currentCategory] = new StringBuilder();
                 filesContent[currentCategory].AppendLine(currentBlock.ToString().TrimEnd());
+                filesContent[currentCategory].AppendLine();
             }
 
             // File generation
@@ -97,16 +99,16 @@ namespace Yakuza6LocalizationTool
             foreach (string file in files)
             {
                 // Extract the content of each fragmented file
-                string content = File.ReadAllText(file);
+                string content = File.ReadAllText(file).Replace("\r\n", "\n");
                 
                 // Remove the header from the split file (using double newline as the header separator)
-                int firstDoubleEnter = content.IndexOf(Environment.NewLine + Environment.NewLine);
+                int firstDoubleEnter = content.IndexOf("\n\n");
                 if (firstDoubleEnter != -1)
                 {
                     if (string.IsNullOrEmpty(header))
-                        header = content.Substring(0, firstDoubleEnter + (Environment.NewLine.Length * 2));
+                        header = content.Substring(0, firstDoubleEnter + 2).Replace("\n", "\r\n");
                     
-                    mergedContent.Append(content.Substring(firstDoubleEnter + (Environment.NewLine.Length * 2)));
+                    mergedContent.Append(content.Substring(firstDoubleEnter + 2).Replace("\n", "\r\n"));
                 }
             }
 
