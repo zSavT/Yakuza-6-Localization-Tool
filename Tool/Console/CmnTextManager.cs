@@ -56,11 +56,18 @@ namespace Yakuza6LocalizationTool
                 }
             }
 
-            // Filter out any string that repeats more than 3 times, unless it looks like a natural language string
+            // Filter out any string that repeats too many times, unless it looks like a natural language string.
+            // Strings longer than 7 characters have a higher repetition tolerance (10 occurrences instead of 3).
             if (extractedTexts.Count > 0 && textOccurrences.Count > 0)
             {
                 var keysToRemove = extractedTexts
-                    .Where(kvp => textOccurrences[kvp.Value] > 3 && !IsNaturalLanguage(kvp.Value))
+                    .Where(kvp =>
+                    {
+                        string text = kvp.Value;
+                        int count = textOccurrences[text];
+                        int maxOccurrences = text.Length > 7 ? 10 : 3;
+                        return count > maxOccurrences && !IsNaturalLanguage(text);
+                    })
                     .Select(kvp => kvp.Key)
                     .ToList();
                 foreach (var key in keysToRemove)
