@@ -12,6 +12,7 @@ namespace PoConverter
         public static int ErrorCount = 0;
         public static int WarningCount = 0;
         public static bool QuietLogs = false;
+        private static readonly object consoleLock = new object();
 
         // ------------
         // PIPELINE CONTEXT
@@ -236,10 +237,19 @@ namespace PoConverter
 
             PrintInfo($"\n[*] Found {files.Count} total files to evaluate.");
 
+            HashSet<string> eVariantFilenames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var file in files)
+            {
+                if (file.Contains("\\e\\", StringComparison.OrdinalIgnoreCase) || file.Contains("/e/", StringComparison.OrdinalIgnoreCase))
+                {
+                    eVariantFilenames.Add(Path.GetFileName(file));
+                }
+            }
+
             int targetCount = 0;
             foreach (var binPath in files)
             {
-                if (ProcessExtractionFile(binPath, ctx, files))
+                if (ProcessExtractionFile(binPath, ctx, eVariantFilenames))
                 {
                     targetCount++;
                 }
@@ -295,13 +305,9 @@ namespace PoConverter
                     string targetJsonPath = Path.Combine(currentOgJsonDir, filename + ".json");
                     string? actualGeneratedJson = FindGeneratedFile(filename + ".json", generatedJsonPathInPlace);
 
-                    if (actualGeneratedJson != null)
+                    if (MoveGeneratedFile(actualGeneratedJson, targetJsonPath))
                     {
-                        Directory.CreateDirectory(currentOgJsonDir);
-                        if (File.Exists(targetJsonPath)) File.Delete(targetJsonPath);
-                        File.Move(actualGeneratedJson, targetJsonPath);
-
-                        string poPath = Path.Combine(currentWorkspaceDir, filename.Replace(".bin", ".po"));
+                        string poPath = Path.Combine(currentWorkspaceDir, Path.GetFileNameWithoutExtension(filename) + ".po");
                         PrintStep("  -> [PoConverter] Generating PO file internally...");
                         try
                         {
@@ -344,7 +350,7 @@ namespace PoConverter
             }
 
             var poFiles = Directory.GetFiles(ctx.WorkspaceDir, "*.po", SearchOption.AllDirectories)
-                .Where(f => IsFileAllowed(Path.GetFileName(f).Replace(".po", ".bin"), ctx.AllowedBinFiles) || IsFileAllowed(Path.GetFileName(f).Replace(".po", ".bin"), ctx.AllowedCmnFiles))
+                .Where(f => IsFileAllowed(Path.GetFileNameWithoutExtension(f) + ".bin", ctx.AllowedBinFiles) || IsFileAllowed(Path.GetFileNameWithoutExtension(f) + ".bin", ctx.AllowedCmnFiles))
                 .ToList();
             var texFiles = new List<string>();
 
@@ -471,7 +477,7 @@ namespace PoConverter
                 string currentOutputDir = Path.Combine(ctx.OutputDir, relPath);
                 Directory.CreateDirectory(currentOutputDir);
 
-                string baseName = poFilename.Replace(".po", "");
+                string baseName = Path.GetFileNameWithoutExtension(poFilename);
                 string jsonFilename = baseName + ".bin.json";
                 string ogJsonPath = Path.Combine(currentOgJsonDir, jsonFilename);
                 string outputJsonPath = Path.Combine(currentOutputDir, jsonFilename);
@@ -501,17 +507,8 @@ namespace PoConverter
                     string generatedBinPathInPlace = Path.Combine(currentOutputDir, jsonFilename + ".bin");
                     string? actualGeneratedBin = FindGeneratedFile(jsonFilename + ".bin", generatedBinPathInPlace);
 
-                    if (actualGeneratedBin != null)
+                    if (MoveGeneratedFile(actualGeneratedBin, targetBinPath))
                     {
-                        if (actualGeneratedBin != targetBinPath)
-                        {
-                            if (File.Exists(targetBinPath))
-                            {
-                                File.SetAttributes(targetBinPath, File.GetAttributes(targetBinPath) & ~FileAttributes.ReadOnly);
-                                File.Delete(targetBinPath);
-                            }
-                            File.Move(actualGeneratedBin, targetBinPath);
-                        }
                         PrintSuccess($"  [OK] BIN file updated successfully.");
 
                         if (File.Exists(outputJsonPath))
@@ -1164,7 +1161,7 @@ namespace PoConverter
             return "";
         }
 
-        private static bool ShouldProcessFile(string filename, string relPath, HashSet<string> allowedBinFiles, HashSet<string> allowedTextureFiles, HashSet<string> allowedCmnFiles, Dictionary<string, List<string>> folderFilters, List<string> allFiles, out bool isTargetBin, out bool isTargetTex, out bool isTargetCmn)
+        private static bool ShouldProcessFile(string filename, string relPath, HashSet<string> allowedBinFiles, HashSet<string> allowedTextureFiles, HashSet<string> allowedCmnFiles, Dictionary<string, List<string>> folderFilters, HashSet<string> eVariantFilenames, out bool isTargetBin, out bool isTargetTex, out bool isTargetCmn)
         {
             isTargetBin = IsFileAllowed(filename, allowedBinFiles);
             isTargetTex = IsFileAllowed(filename, allowedTextureFiles);
@@ -1194,9 +1191,7 @@ namespace PoConverter
             {
                 if (isInEFolder) return true;
 
-                bool hasEVariant = allFiles.Any(f => 
-                    Path.GetFileName(f).Equals(filename, StringComparison.OrdinalIgnoreCase) && 
-                    (f.Contains("\\e\\", StringComparison.OrdinalIgnoreCase) || f.Contains("/e/", StringComparison.OrdinalIgnoreCase)));
+                bool hasEVariant = eVariantFilenames.Contains(filename);
 
                 return !hasEVariant;
             }
@@ -1208,13 +1203,13 @@ namespace PoConverter
             return false;
         }
 
-        private static bool ProcessExtractionFile(string binPath, PipelineContext ctx, List<string> allFiles)
+        private static bool ProcessExtractionFile(string binPath, PipelineContext ctx, HashSet<string> eVariantFilenames)
         {
             string filename = Path.GetFileName(binPath);
             string fileDir = Path.GetDirectoryName(binPath) ?? "";
             string relPath = GetRelativePath(fileDir);
 
-            if (!ShouldProcessFile(filename, relPath, ctx.AllowedBinFiles, ctx.AllowedTextureFiles, ctx.AllowedCmnFiles, ctx.FolderFilters, allFiles, out bool isTargetBin, out bool isTargetTex, out bool isTargetCmn))
+            if (!ShouldProcessFile(filename, relPath, ctx.AllowedBinFiles, ctx.AllowedTextureFiles, ctx.AllowedCmnFiles, ctx.FolderFilters, eVariantFilenames, out bool isTargetBin, out bool isTargetTex, out bool isTargetCmn))
             {
                 return false;
             }
@@ -1231,7 +1226,7 @@ namespace PoConverter
             string currentWorkspaceDir = Path.Combine(ctx.WorkspaceDir, relPath);
 
             bool kept = false;
-            string poPath = Path.Combine(currentWorkspaceDir, filename.Replace(".bin", ".po"));
+            string poPath = Path.Combine(currentWorkspaceDir, Path.GetFileNameWithoutExtension(filename) + ".po");
 
             if (isTargetTex)
             {
@@ -1274,11 +1269,8 @@ namespace PoConverter
 
                     string? actualGeneratedJson = FindGeneratedFile(filename + ".json", generatedJsonPathInPlace);
 
-                    if (actualGeneratedJson != null)
+                    if (MoveGeneratedFile(actualGeneratedJson, targetJsonPath))
                     {
-                        Directory.CreateDirectory(currentOgJsonDir);
-                        if (File.Exists(targetJsonPath)) File.Delete(targetJsonPath);
-                        File.Move(actualGeneratedJson, targetJsonPath);
 
                         PrintStep("  -> [PoConverter] Generating PO file internally...");
                         try
@@ -1337,7 +1329,7 @@ namespace PoConverter
             string currentOutputDir = Path.Combine(ctx.OutputDir, relPath);
             Directory.CreateDirectory(currentOutputDir);
 
-            string baseName = poFilename.Replace(".po", "");
+            string baseName = Path.GetFileNameWithoutExtension(poFilename);
             string jsonFilename = baseName + ".bin.json";
             string ogJsonPath = Path.Combine(currentOgJsonDir, jsonFilename);
             string outputJsonPath = Path.Combine(currentOutputDir, jsonFilename);
@@ -1394,17 +1386,8 @@ namespace PoConverter
                 string generatedBinPathInPlace = Path.Combine(currentOutputDir, jsonFilename + ".bin");
                 string? actualGeneratedBin = FindGeneratedFile(jsonFilename + ".bin", generatedBinPathInPlace);
 
-                if (actualGeneratedBin != null)
+                if (MoveGeneratedFile(actualGeneratedBin, targetBinPath))
                 {
-                    if (actualGeneratedBin != targetBinPath)
-                    {
-                        if (File.Exists(targetBinPath))
-                        {
-                            File.SetAttributes(targetBinPath, File.GetAttributes(targetBinPath) & ~FileAttributes.ReadOnly);
-                            File.Delete(targetBinPath);
-                        }
-                        File.Move(actualGeneratedBin, targetBinPath);
-                    }
                     PrintSuccess($"  [OK] BIN file updated successfully in {relPath}.");
 
                     if (File.Exists(outputJsonPath))
@@ -1443,12 +1426,17 @@ namespace PoConverter
         // ------------
         // CONSOLE LOGGING
         // ------------
+        // PRINT HELPERS
+        // ------------
         internal static void PrintError(string msg) 
         { 
             ErrorCount++; 
-            Console.ForegroundColor = ConsoleColor.Red; 
-            Console.WriteLine(msg); 
-            Console.ResetColor(); 
+            lock (consoleLock)
+            {
+                Console.ForegroundColor = ConsoleColor.Red; 
+                Console.WriteLine(msg); 
+                Console.ResetColor(); 
+            }
             try
             {
                 string patchDir = Path.Combine(Environment.CurrentDirectory, "Yakuza 6 - Patch");
@@ -1459,11 +1447,83 @@ namespace PoConverter
             }
             catch { }
         }
-        internal static void PrintWarning(string msg) { WarningCount++; Console.ForegroundColor = ConsoleColor.Yellow; Console.WriteLine(msg); Console.ResetColor(); }
-        internal static void PrintSuccess(string msg) { Console.ForegroundColor = ConsoleColor.Green; Console.WriteLine(msg); Console.ResetColor(); }
-        internal static void PrintInfo(string msg) { Console.ForegroundColor = ConsoleColor.Cyan; Console.WriteLine(msg); Console.ResetColor(); }
-        internal static void PrintStep(string msg) { Console.ForegroundColor = ConsoleColor.DarkGray; Console.WriteLine(msg); Console.ResetColor(); }
-        internal static void PrintHeader(string msg) { Console.ForegroundColor = ConsoleColor.Magenta; Console.WriteLine(msg); Console.ResetColor(); }
+        internal static void PrintWarning(string msg) 
+        { 
+            WarningCount++; 
+            lock (consoleLock)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow; 
+                Console.WriteLine(msg); 
+                Console.ResetColor(); 
+            }
+            try
+            {
+                string patchDir = Path.Combine(Environment.CurrentDirectory, "Yakuza 6 - Patch");
+                if (Directory.Exists(patchDir))
+                {
+                    File.AppendAllText(Path.Combine(patchDir, "warnings.txt"), msg + Environment.NewLine);
+                }
+            }
+            catch { }
+        }
+        internal static void PrintSuccess(string msg) 
+        { 
+            lock (consoleLock)
+            {
+                Console.ForegroundColor = ConsoleColor.Green; 
+                Console.WriteLine(msg); 
+                Console.ResetColor(); 
+            }
+        }
+        internal static void PrintInfo(string msg) 
+        { 
+            lock (consoleLock)
+            {
+                Console.ForegroundColor = ConsoleColor.Cyan; 
+                Console.WriteLine(msg); 
+                Console.ResetColor(); 
+            }
+        }
+        internal static void PrintStep(string msg) 
+        { 
+            lock (consoleLock)
+            {
+                Console.ForegroundColor = ConsoleColor.DarkGray; 
+                Console.WriteLine(msg); 
+                Console.ResetColor(); 
+            }
+        }
+        internal static void PrintHeader(string msg) 
+        { 
+            lock (consoleLock)
+            {
+                Console.ForegroundColor = ConsoleColor.Magenta; 
+                Console.WriteLine(msg); 
+                Console.ResetColor(); 
+            }
+        }
+
+        private static bool MoveGeneratedFile(string? actualGeneratedPath, string targetPath)
+        {
+            if (actualGeneratedPath == null) return false;
+            
+            if (actualGeneratedPath != targetPath)
+            {
+                string targetDir = Path.GetDirectoryName(targetPath)!;
+                if (!string.IsNullOrEmpty(targetDir))
+                {
+                    Directory.CreateDirectory(targetDir);
+                }
+                
+                if (File.Exists(targetPath))
+                {
+                    File.SetAttributes(targetPath, File.GetAttributes(targetPath) & ~FileAttributes.ReadOnly);
+                    File.Delete(targetPath);
+                }
+                File.Move(actualGeneratedPath, targetPath);
+            }
+            return true;
+        }
 
         // ------------
         // FILE UTILITIES
@@ -1495,18 +1555,16 @@ namespace PoConverter
 
         private static bool IsFileAllowed(string filename, HashSet<string> allowedFiles)
         {
+            if (allowedFiles.Contains(filename)) return true;
+
             foreach (var f in allowedFiles)
             {
-                if (f.Contains("*"))
+                if (f.Contains('*'))
                 {
                     string start = f.Substring(0, f.IndexOf('*'));
                     string end = f.Substring(f.IndexOf('*') + 1);
                     if (filename.StartsWith(start, StringComparison.OrdinalIgnoreCase) && filename.EndsWith(end, StringComparison.OrdinalIgnoreCase))
                         return true;
-                }
-                else if (f.Equals(filename, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
                 }
             }
             return false;

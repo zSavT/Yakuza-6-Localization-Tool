@@ -173,7 +173,7 @@ namespace PoConverter
         internal static void PoToJson(string inputFile, string outputFile, string? originalJsonFile, string? dictionaryFile)
         {
             string jsonString = !string.IsNullOrEmpty(originalJsonFile) ? File.ReadAllText(originalJsonFile) : "{}";
-            JObject jsonObject = JObject.Parse(jsonString) ?? new JObject();
+            JObject jsonObject = JObject.Parse(jsonString);
 
             foreach (var entry in ParsePoFile(inputFile))
             {
@@ -481,8 +481,7 @@ namespace PoConverter
                 }
             }
 
-            bool isOnlyJapanese = letters.All(c => (c >= '\u3040' && c <= '\u30ff') || (c >= '\u3400' && c <= '\u4dbf') || (c >= '\u4e00' && c <= '\u9fff'));
-            if (isOnlyJapanese) return false;
+
 
             bool isInternalId = text.Contains("_") || text.Contains(".dds") || text.Contains(".bin") || text.Contains("[IK]");
             if (isInternalId) return false;
@@ -580,7 +579,7 @@ namespace PoConverter
 
         private static IEnumerable<PoEntry> ParsePoFile(string inputFile)
         {
-            string[] lines = File.ReadAllLines(inputFile);
+            var lines = File.ReadLines(inputFile);
             string? currentKey = null;
             string? currentMsgId = null;
             string? currentMsgStr = null;

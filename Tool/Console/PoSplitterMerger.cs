@@ -15,7 +15,7 @@ namespace Yakuza6LocalizationTool
         {
             if (!File.Exists(sourcePoPath)) return;
 
-            string[] lines = File.ReadAllLines(sourcePoPath);
+            var lines = File.ReadLines(sourcePoPath);
             string header = "";
             
             // Dictionary to map the category name (e.g. speech_list_main01) to its content
