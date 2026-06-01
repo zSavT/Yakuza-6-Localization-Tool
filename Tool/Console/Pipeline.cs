@@ -72,25 +72,27 @@ namespace PoConverter
 
             ParseArguments(args, out string? folderPath, out string? choice, out bool skipTextures, out string language, out bool cleanAll, out bool autoYes, out string dictFile, out string? customDbPath, out bool splitSoundAuth, out bool extractSystemStrings);
 
-            PrintHeader("==================================================================");
-            PrintHeader("   Yakuza 6 Localization Tool - Ultimate Automation Pipeline");
-            PrintHeader("==================================================================");
-            PrintInfo("   Credits:");
-            PrintInfo("   - reARMP (by Ret-HZ): Parse Yakuza .bin files to .json and vice-versa");
-            PrintInfo("   - ParTool (by Kaplas80): Extract and compress .par archives");
-            PrintHeader("==================================================================\n");
+            PrintHeader("  +------------------------------------------------------------+");
+            PrintHeader("  |        YAKUZA 6 LOCALIZATION TOOL - PIPELINE (v0.4)        |");
+            PrintHeader("  +------------------------------------------------------------+");
+            PrintInfo("  +------------------------------------------------------------+");
+            PrintInfo("  | Credits & External Tools:                                  |");
+            PrintInfo("  |   reARMP  - Parse Yakuza .bin <=> .json  (by Ret-HZ)       |");
+            PrintInfo("  |   ParTool - Extract/compress .par archives  (by Kaplas80)  |");
+            PrintInfo("  +------------------------------------------------------------+\n");
 
             if (string.IsNullOrEmpty(customDbPath))
             {
                 if (string.IsNullOrEmpty(folderPath))
                 {
-                    Console.Write("Enter the path of the 'Yakuza 6 - The Song of Life' folder: ");
+                    PrintInfo("  Enter the path of the 'Yakuza 6 - The Song of Life' folder:");
+                    Console.Write("  -> ");
                     folderPath = Console.ReadLine()?.Trim().Trim('"');
                 }
 
                 if (string.IsNullOrEmpty(folderPath) || !Directory.Exists(folderPath))
                 {
-                    PrintError($"[!] Error: '{folderPath}' is not a valid folder. (Please provide the full path to the 'Yakuza 6 - The Song of Life' installation directory.)");
+                    PrintError($"Error: '{folderPath}' is not a valid folder. (Please provide the full path to the 'Yakuza 6 - The Song of Life' installation directory.)");
                     return;
                 }
             }
@@ -104,16 +106,19 @@ namespace PoConverter
 
             if (string.IsNullOrEmpty(choice))
             {
-                PrintInfo("\nSelect the operation to perform:");
-                Console.WriteLine("1. Extraction: From .bin file -> extract JSON with reARMP -> convert to .po");
-                Console.WriteLine("2. Recreation: From .po file -> update JSON with PoConverter -> recreate .bin with reARMP");
-                Console.Write("Choice (1 or 2): ");
+                PrintInfo("\n  +------------------------------------------------------------+");
+                PrintInfo("  |                SELECT OPERATION TO PERFORM                 |");
+                PrintInfo("  +------------------------------------------------------------+");
+                PrintInfo("  |  [1] EXTRACTION (Extract Bin/Cmn/Textures to PO)           |");
+                PrintInfo("  |  [2] RECREATION (Rebuild Bin/Cmn/Textures from PO)         |");
+                PrintInfo("  +------------------------------------------------------------+");
+                Console.Write("  Your choice (1 or 2) -> ");
                 choice = Console.ReadLine()?.Trim();
             }
 
             if (choice != "1" && choice != "2")
             {
-                PrintError("[!] Invalid choice.");
+                PrintError("Invalid choice.");
                 return;
             }
 
@@ -173,40 +178,43 @@ namespace PoConverter
             int totalWarnings = WarningCount + cmnWarnings;
 
             stopwatch.Stop();
-            PrintHeader($"\n==================================================================");
-            PrintSuccess($"   Batch Operation completed in {stopwatch.Elapsed.TotalSeconds:F2} seconds!");
-            PrintHeader($"==================================================================");
+            PrintHeader($"\n  +------------------------------------------------------------+");
+            PrintSuccess($"  |        Batch Operation completed in {stopwatch.Elapsed.TotalSeconds:F2} seconds!       |");
+            PrintHeader($"  +------------------------------------------------------------+");
             if (choice == "1")
             {
-                PrintInfo($"    - Files Extracted & Parsed : {targetCount}");
+                PrintInfo($"  |  * Files Extracted & Parsed  : {targetCount,-28} |");
             }
             else if (choice == "2")
             {
-                PrintInfo($"    - Texts Updated            : {updatedTextsCount}");
-                PrintInfo($"    - Textures Updated         : {updatedTexturesCount}");
+                PrintInfo($"  |  * Texts Updated             : {updatedTextsCount,-28} |");
+                PrintInfo($"  |  * Textures Updated          : {updatedTexturesCount,-28} |");
             }
 
             if (totalWarnings > 0)
-                PrintWarning($"    - Warnings                 : {totalWarnings}" + (File.Exists(warningsFile) ? " (see warnings.txt)" : ""));
+            {
+                string warnStr = $"{totalWarnings} (see warnings.txt)";
+                PrintWarning($"  |  * Warnings                  : {warnStr,-28} |");
+            }
             else
-                PrintInfo($"    - Warnings                 : 0");
+            {
+                PrintInfo($"  |  * Warnings                  : 0                            |");
+            }
 
             if (ErrorCount > 0)
             {
-                string errorMsg = $"    - Errors                   : {ErrorCount}";
-                if (File.Exists(errorsFile)) errorMsg += " (see errors.txt)";
-
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine(errorMsg);
-                Console.ResetColor();
+                string errStr = $"{ErrorCount} (see errors.txt)";
+                PrintError($"  |  * Errors                    : {errStr,-28} |");
             }
             else
-                PrintInfo($"    - Errors                   : 0");
-            PrintHeader($"==================================================================");
+            {
+                PrintInfo($"  |  * Errors                    : 0                            |");
+            }
+            PrintHeader($"  +------------------------------------------------------------+");
 
             if (!autoYes)
             {
-                Console.WriteLine("\nPress ENTER to close...");
+                Console.WriteLine("\n  Press ENTER to close...");
                 Console.ReadLine();
             }
         }
@@ -738,7 +746,8 @@ namespace PoConverter
                     bool doClean = autoYes;
                     if (!doClean)
                     {
-                        Console.Write("\nThe 'Yakuza 6 - Patch' folder already exists. Do you want to CLEAR previous extraction files (workspace, og file, og json) before starting? (y/n): ");
+                        PrintWarning("\n  [WARN] The 'Yakuza 6 - Patch' folder already exists.");
+                        Console.Write("  Do you want to CLEAR previous extraction files (workspace, og file, og json) before starting? (y/n) -> ");
                         string? cleanChoice = Console.ReadLine()?.Trim().ToLower();
                         doClean = (cleanChoice == "y" || cleanChoice == "yes");
                     }
@@ -759,7 +768,8 @@ namespace PoConverter
                     bool doClean = autoYes;
                     if (!doClean)
                     {
-                        Console.Write("\nThe 'output' folder already exists. Do you want to CLEAR it before starting to avoid leftovers? (y/n): ");
+                        PrintWarning("\n  [WARN] The 'output' folder already exists.");
+                        Console.Write("  Do you want to CLEAR it before starting to avoid leftovers? (y/n) -> ");
                         string? cleanChoice = Console.ReadLine()?.Trim().ToLower();
                         doClean = (cleanChoice == "y" || cleanChoice == "yes");
                     }
@@ -1452,15 +1462,25 @@ namespace PoConverter
         // ------------
         // PRINT HELPERS
         // ------------
+        private static void WriteLogLine(string msg, ConsoleColor color, string defaultPrefix)
+        {
+            lock (consoleLock)
+            {
+                Console.ForegroundColor = color;
+                if (msg.StartsWith("\n"))
+                {
+                    Console.Write("\n");
+                    msg = msg.Substring(1);
+                }
+                Console.WriteLine(msg.StartsWith("  ") ? msg : defaultPrefix + " " + msg);
+                Console.ResetColor();
+            }
+        }
+
         internal static void PrintError(string msg) 
         { 
             ErrorCount++; 
-            lock (consoleLock)
-            {
-                Console.ForegroundColor = ConsoleColor.Red; 
-                Console.WriteLine(msg); 
-                Console.ResetColor(); 
-            }
+            WriteLogLine(msg, ConsoleColor.Red, "[ERR]");
             try
             {
                 string patchDir = Path.Combine(Environment.CurrentDirectory, "Yakuza 6 - Patch");
@@ -1474,12 +1494,7 @@ namespace PoConverter
         internal static void PrintWarning(string msg) 
         { 
             WarningCount++; 
-            lock (consoleLock)
-            {
-                Console.ForegroundColor = ConsoleColor.Yellow; 
-                Console.WriteLine(msg); 
-                Console.ResetColor(); 
-            }
+            WriteLogLine(msg, ConsoleColor.Yellow, "[WARN]");
             try
             {
                 string patchDir = Path.Combine(Environment.CurrentDirectory, "Yakuza 6 - Patch");
@@ -1490,42 +1505,10 @@ namespace PoConverter
             }
             catch { }
         }
-        internal static void PrintSuccess(string msg) 
-        { 
-            lock (consoleLock)
-            {
-                Console.ForegroundColor = ConsoleColor.Green; 
-                Console.WriteLine(msg); 
-                Console.ResetColor(); 
-            }
-        }
-        internal static void PrintInfo(string msg) 
-        { 
-            lock (consoleLock)
-            {
-                Console.ForegroundColor = ConsoleColor.Cyan; 
-                Console.WriteLine(msg); 
-                Console.ResetColor(); 
-            }
-        }
-        internal static void PrintStep(string msg) 
-        { 
-            lock (consoleLock)
-            {
-                Console.ForegroundColor = ConsoleColor.DarkGray; 
-                Console.WriteLine(msg); 
-                Console.ResetColor(); 
-            }
-        }
-        internal static void PrintHeader(string msg) 
-        { 
-            lock (consoleLock)
-            {
-                Console.ForegroundColor = ConsoleColor.Magenta; 
-                Console.WriteLine(msg); 
-                Console.ResetColor(); 
-            }
-        }
+        internal static void PrintSuccess(string msg) => WriteLogLine(msg, ConsoleColor.Green, "[OK]");
+        internal static void PrintInfo(string msg) => WriteLogLine(msg, ConsoleColor.Cyan, "[INFO]");
+        internal static void PrintStep(string msg) => WriteLogLine(msg, ConsoleColor.DarkGray, "  ->");
+        internal static void PrintHeader(string msg) => WriteLogLine(msg, ConsoleColor.Magenta, "[PIPELINE]");
 
         private static bool MoveGeneratedFile(string? actualGeneratedPath, string targetPath)
         {

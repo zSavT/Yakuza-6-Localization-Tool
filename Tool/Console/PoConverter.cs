@@ -369,9 +369,9 @@ namespace PoConverter
 
         private static readonly HashSet<string> CodeKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "true", "false", "null", "void", "int", "float", "double", "string", "bool", "char",
-            "class", "struct", "import", "return", "break", "continue", "if", "else", "for", "while",
-            "switch", "case", "default", "public", "private", "protected", "internal", "static",
+           "null", "void", "int", "float", "double", "string", "bool", "char",
+            "class", "struct", "import", "break", "if", "else", "for", "while",
+            "switch", "case", "public", "private", "protected", "internal", "static",
             "new", "this", "base", "undefined", "var", "const", "let", "function", "fn",
             "func", "def", "and", "or", "not", "xor"
         };
