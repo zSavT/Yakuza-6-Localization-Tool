@@ -16,6 +16,8 @@ namespace PoConverter
         // ------------
         static void Main(string[] args)
         {
+            Console.OutputEncoding = Encoding.UTF8;
+
             if (args.Length >= 3 && (args[2] == "po2json" || args[2] == "json2po"))
             {
                 RunPoConverterDirectly(args);

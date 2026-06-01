@@ -186,7 +186,12 @@ namespace Yakuza6LocalizationTool
                 if (char.IsLetter(c) || char.IsWhiteSpace(c)) continue;
 
                 // Allow common punctuation and symbols typical in natural language
-                if (c == '\'' || c == '’' || c == '-' || c == ',' || c == '.' || c == '!' || c == '?' || c == '"' || c == ':') continue;
+                if (c == '\'' || c == '’' || c == '-' || c == ',' || c == '.' || c == '!' || c == '?' || c == '"' || c == ':' || c == ';') continue;
+                if (c == '♪' || c == '♩' || c == '♫' || c == '♬' || c == '…' || c == '★' || c == '☆' || c == '♥' || c == '♡' || c == '❤') continue;
+                if (c == '~' || c == '～' || c == '〜' || c == '—' || c == '–' || c == '―') continue;
+                if (c == '«' || c == '»' || c == '“' || c == '”' || c == '‘' || c == '„' || c == '「' || c == '」' || c == '『' || c == '』') continue;
+                if (c == '·' || c == '•' || c == '・' || c == '※') continue;
+                if (c == '♯' || c == '♭' || c == '♮') continue;
 
                 return false;
             }
