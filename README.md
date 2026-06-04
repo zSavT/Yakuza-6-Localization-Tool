@@ -126,7 +126,7 @@ A custom raw binary scanner for `.cmn` cutscene files. It reads `.bin` files byt
 To keep the extracted files clean of random binary noise, the scanner utilizes advanced heuristics:
 - **Alphabet constraints**: Extracts only text using Latin, Western European accented, or Japanese characters, immediately discarding Cyrillic, Armenian, or other non-pertinent alphabets.
 - **Vowel and ratio check**: Latin text must contain at least one vowel, and at least 50% of the characters must be letters.
-- **Length and repetition exemptions**: Allows short 2-character words (if matching a whitelist, e.g., "no", "ok"), and exempts natural language strings from the repetition limit.
+- **Length and repetition exemptions**: Allows short 2-character words (if matching a whitelist, e.g., "no", "ok"), and exempts natural language strings from the repetition limit. The natural language check includes a whitelist of typical dialogue symbols (such as musical notes `♪`, Japanese quotation marks `「` `」`, stars/hearts, dashes, and other common punctuation) to prevent legitimate dialogues from being discarded.
 - **System text auto-tagging**: Single lowercase words are annotated in the `.po` files with a `#. WARNING` comment indicating they are likely untranslatable system identifiers (e.g., "substory", "kiryu").
 
 During recreation, it safely injects the translated text back into the exact memory offset, truncating it at a valid UTF-8 character boundary if it exceeds the original byte limit to prevent file corruption.

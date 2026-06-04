@@ -122,7 +122,7 @@ Uno scanner binario grezzo personalizzato per i file delle cutscene `.cmn`. Legg
 Per mantenere i file estratti puliti da rumore binario e byte casuali, lo scanner adotta euristiche avanzate:
 - **Vincoli alfabetici**: Estrae solo testi composti da caratteri latini, latini accentati dell'Europa occidentale o giapponesi, scartando cirillico, armeno o altri alfabeti non pertinenti.
 - **Rapporto lettere e vocali**: I testi latini devono contenere almeno una vocale e le lettere devono rappresentare almeno il 50% della lunghezza totale della stringa.
-- **Soglie e ripetizioni**: Consente parole brevi da 2 caratteri (se presenti in una whitelist di parole reali, es. "no", "ok") ed esenta le stringhe di linguaggio naturale dal limite delle ripetizioni.
+- **Soglie e ripetizioni**: Consente parole brevi da 2 caratteri (se presenti in una whitelist di parole reali, es. "no", "ok") ed esenta le stringhe di linguaggio naturale dal limite delle ripetizioni. Il controllo di linguaggio naturale include una whitelist di simboli tipici dei dialoghi (come note musicali `♪`, virgolette giapponesi `「` `」`, stelle/cuori, trattini e altra punteggiatura comune) per evitare che i dialoghi legittimi vengano scartati.
 - **Etichettatura automatica**: Le parole singole con iniziale minuscola vengono annotate nel file `.po` con un commento `#. WARNING` per indicare che si tratta probabilmente di identificatori/testi di sistema non da tradurre (es. "substory", "kiryu").
 
 Durante la ricreazione, inietta in modo sicuro il testo tradotto nell'offset di memoria esatto, troncandolo a un confine di carattere UTF-8 valido se supera il limite di byte originale per prevenire la corruzione del file.

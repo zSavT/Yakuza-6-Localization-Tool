@@ -1306,7 +1306,7 @@ namespace PoConverter
                                 PrintSuccess($"  [OK] Created PO file: {relPath}\\{Path.GetFileName(poPath)}");
                                 kept = true;
 
-                                // DIVIDE AUTOMATICAMENTE SOUND_AUTH.PO
+                                // AUTOMATICALLY SPLIT SOUND_AUTH.PO
                                 if (ctx.SplitSoundAuth && filename.Equals("sound_auth.bin", StringComparison.OrdinalIgnoreCase))
                                 {
                                     string splitDir = Path.Combine(currentWorkspaceDir, "sound_auth_split");
@@ -1314,7 +1314,7 @@ namespace PoConverter
                                     Yakuza6LocalizationTool.PoSplitterMerger.SplitPoFile(poPath, splitDir);
                                     if (Directory.Exists(splitDir) && Directory.GetFiles(splitDir, "*.po").Length > 0)
                                     {
-                                        File.Delete(poPath); // Cancella il file intero per non confondere i traduttori
+                                        File.Delete(poPath); // Delete the whole file to avoid confusing translators
                                         PrintSuccess($"  [OK] Split sound_auth.po into {GetRelativeWorkspacePath(splitDir, ctx.WorkspaceDir)}");
                                     }
                                     else
