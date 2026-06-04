@@ -16,6 +16,8 @@ namespace PoConverter
         // ------------
         static void Main(string[] args)
         {
+            Console.OutputEncoding = Encoding.UTF8;
+
             if (args.Length >= 3 && (args[2] == "po2json" || args[2] == "json2po"))
             {
                 RunPoConverterDirectly(args);
@@ -173,7 +175,7 @@ namespace PoConverter
         internal static void PoToJson(string inputFile, string outputFile, string? originalJsonFile, string? dictionaryFile)
         {
             string jsonString = !string.IsNullOrEmpty(originalJsonFile) ? File.ReadAllText(originalJsonFile) : "{}";
-            JObject jsonObject = JObject.Parse(jsonString) ?? new JObject();
+            JObject jsonObject = JObject.Parse(jsonString);
 
             foreach (var entry in ParsePoFile(inputFile))
             {
@@ -369,9 +371,9 @@ namespace PoConverter
 
         private static readonly HashSet<string> CodeKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "true", "false", "null", "void", "int", "float", "double", "string", "bool", "char",
-            "class", "struct", "import", "return", "break", "continue", "if", "else", "for", "while",
-            "switch", "case", "default", "public", "private", "protected", "internal", "static",
+           "null", "void", "int", "float", "double", "string", "bool", "char",
+            "class", "struct", "import", "break", "if", "else", "for", "while",
+            "switch", "case", "public", "private", "protected", "internal", "static",
             "new", "this", "base", "undefined", "var", "const", "let", "function", "fn",
             "func", "def", "and", "or", "not", "xor"
         };
@@ -481,8 +483,7 @@ namespace PoConverter
                 }
             }
 
-            bool isOnlyJapanese = letters.All(c => (c >= '\u3040' && c <= '\u30ff') || (c >= '\u3400' && c <= '\u4dbf') || (c >= '\u4e00' && c <= '\u9fff'));
-            if (isOnlyJapanese) return false;
+
 
             bool isInternalId = text.Contains("_") || text.Contains(".dds") || text.Contains(".bin") || text.Contains("[IK]");
             if (isInternalId) return false;
@@ -580,7 +581,7 @@ namespace PoConverter
 
         private static IEnumerable<PoEntry> ParsePoFile(string inputFile)
         {
-            string[] lines = File.ReadAllLines(inputFile);
+            var lines = File.ReadLines(inputFile);
             string? currentKey = null;
             string? currentMsgId = null;
             string? currentMsgStr = null;
@@ -612,6 +613,7 @@ namespace PoConverter
                 {
                     if (currentSection == "msgid") currentMsgId += ExtractString(trimmedLine);
                     else if (currentSection == "msgstr") currentMsgStr += ExtractString(trimmedLine);
+                    else if (currentSection == "msgctxt") currentKey += ExtractString(trimmedLine);
                 }
                 else if (string.IsNullOrEmpty(trimmedLine) && currentKey != null)
                 {

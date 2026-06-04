@@ -16,7 +16,7 @@ namespace Yakuza6LocalizationTool
             Dictionary<string, string> extractedTexts = new Dictionary<string, string>();
             byte[] data = File.ReadAllBytes(cmnFilePath);
             
-            List<byte> currentStr = new List<byte>();
+            int currentLength = 0;
             int startOffset = 0;
             var utf8 = new UTF8Encoding(false, true); // True to throw on invalid bytes
             Dictionary<string, int> textOccurrences = new Dictionary<string, int>();
@@ -26,19 +26,18 @@ namespace Yakuza6LocalizationTool
                 byte b = data[i];
                 if ((b >= 0x20 && b <= 0x7E) || b > 0x7F || b == 0x0A || b == 0x0D || b == 0x09)
                 {
-                    if (currentStr.Count == 0) startOffset = i;
-                    currentStr.Add(b);
+                    if (currentLength == 0) startOffset = i;
+                    currentLength++;
                 }
-                else if (b == 0 && currentStr.Count >= 2)
+                else if (b == 0 && currentLength >= 2)
                 {
                     try
                     {
-                        string text = utf8.GetString(currentStr.ToArray());
+                        string text = utf8.GetString(data, startOffset, currentLength);
                         
                         if (global::PoConverter.PoConverter.IsValidTranslationString(text, true))
                         {
-                            int capacity = currentStr.Count;
-                            string contextId = $"Offset_0x{startOffset:X}_Len_{capacity}";
+                            string contextId = $"Offset_0x{startOffset:X}_Len_{currentLength}";
                             extractedTexts[contextId] = text;
 
                             if (textOccurrences.ContainsKey(text))
@@ -48,12 +47,31 @@ namespace Yakuza6LocalizationTool
                         }
                     }
                     catch (ArgumentException) { } // Ignore decoding errors
-                    currentStr.Clear();
+                    currentLength = 0;
                 }
                 else
                 {
-                    currentStr.Clear();
+                    currentLength = 0;
                 }
+            }
+
+            if (currentLength >= 2)
+            {
+                try
+                {
+                    string text = utf8.GetString(data, startOffset, currentLength);
+                    if (global::PoConverter.PoConverter.IsValidTranslationString(text, true))
+                    {
+                        string contextId = $"Offset_0x{startOffset:X}_Len_{currentLength}";
+                        extractedTexts[contextId] = text;
+
+                        if (textOccurrences.ContainsKey(text))
+                            textOccurrences[text]++;
+                        else
+                            textOccurrences[text] = 1;
+                    }
+                }
+                catch (ArgumentException) { }
             }
 
             // Filter out any string that repeats too many times, unless it looks like a natural language string.
@@ -135,6 +153,12 @@ namespace Yakuza6LocalizationTool
                             tradBytes = Encoding.UTF8.GetBytes(translatedText);
                         }
 
+                        if (offset + maxBytes > data.Length)
+                        {
+                            global::PoConverter.Pipeline.PrintWarning($"  [!] Warning: Offset 0x{hexOffset} + Len {maxBytes} exceeds binary size {data.Length}. Skipping.");
+                            continue;
+                        }
+
                         // Inject bytes
                         for (int i = 0; i < tradBytes.Length; i++)
                             data[offset + i] = tradBytes[i];
@@ -162,7 +186,12 @@ namespace Yakuza6LocalizationTool
                 if (char.IsLetter(c) || char.IsWhiteSpace(c)) continue;
 
                 // Allow common punctuation and symbols typical in natural language
-                if (c == '\'' || c == '’' || c == '-' || c == ',' || c == '.' || c == '!' || c == '?' || c == '"' || c == ':') continue;
+                if (c == '\'' || c == '’' || c == '-' || c == ',' || c == '.' || c == '!' || c == '?' || c == '"' || c == ':' || c == ';') continue;
+                if (c == '♪' || c == '♩' || c == '♫' || c == '♬' || c == '…' || c == '★' || c == '☆' || c == '♥' || c == '♡' || c == '❤') continue;
+                if (c == '~' || c == '～' || c == '〜' || c == '—' || c == '–' || c == '―') continue;
+                if (c == '«' || c == '»' || c == '“' || c == '”' || c == '‘' || c == '„' || c == '「' || c == '」' || c == '『' || c == '』') continue;
+                if (c == '·' || c == '•' || c == '・' || c == '※') continue;
+                if (c == '♯' || c == '♭' || c == '♮') continue;
 
                 return false;
             }
