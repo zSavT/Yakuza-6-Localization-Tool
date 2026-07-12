@@ -287,15 +287,16 @@ namespace PoConverter
             PrintStep("  -> Triggering Steam verification for Yakuza 6...");
             try
             {
-                Process.Start(new ProcessStartInfo("steam://validate/347300") { UseShellExecute = true });
+                Process.Start(new ProcessStartInfo("steam://gameproperties/1388590") { UseShellExecute = true });
             }
             catch (Exception ex)
             {
-                PrintError($"  [!] Failed to start Steam verification automatically: {ex.Message}");
-                PrintInfo("  Please open Steam and verify the game files manually.");
+                PrintError($"  [!] Failed to start Steam properties window automatically: {ex.Message}");
+                PrintInfo("  Please open Steam, go to Yakuza 6 Properties manually.");
             }
-            PrintWarning("\n  [IMPORTANT] A Steam dialog should open to verify the game files.");
-            PrintWarning("  Please wait for Steam to finish validation and restore the game files to vanilla.");
+            PrintWarning("\n  [IMPORTANT] The properties window for Yakuza 6 should open in Steam.");
+            PrintWarning("  Please go to the 'Installed Files' tab and click 'Verify integrity of game files'.");
+            PrintWarning("  Wait for Steam to complete the validation and restore files to vanilla.");
             PrintInfo("  Once the validation is 100% complete, press ENTER to continue...");
             Console.ReadLine();
 
