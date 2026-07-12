@@ -81,6 +81,7 @@ namespace PoConverter
             Console.WriteLine("  -q, --quiet             Suppress output logs from external tools (reARMP, ParTool).");
             Console.WriteLine("  -ns, --no-split         Disable automatic splitting of sound_auth.po file.");
             Console.WriteLine("  -d, --dict <path>       Specify a custom dictionary file (default: dictionary.json).");
+            Console.WriteLine("  -dtvt, --debug-text-vanilla-texture  Extract texts from currently patched game, verify game cache on Steam, and recompile with vanilla textures.");
             Console.WriteLine();
             Console.WriteLine("Note: You can also use 'config.json' to set default paths and options permanently.");
             Console.WriteLine();

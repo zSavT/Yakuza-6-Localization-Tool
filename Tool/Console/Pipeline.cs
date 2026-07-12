@@ -3,6 +3,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
+using System.Net.Http;
+using System.Runtime.InteropServices;
 using Newtonsoft.Json.Linq;
 
 namespace PoConverter
@@ -13,6 +15,7 @@ namespace PoConverter
         public static int WarningCount = 0;
         public static bool QuietLogs = false;
         private static readonly object consoleLock = new object();
+        private const string ToolVersion = "0.4.1";
 
         // ------------
         // PIPELINE CONTEXT
@@ -41,6 +44,8 @@ namespace PoConverter
             public string? CustomDbPath { get; init; }
             public required bool SplitSoundAuth { get; init; }
             public required bool ExtractSystemStrings { get; init; }
+            public required bool DebugTextVanillaTexture { get; init; }
+            public required bool AutoYes { get; init; }
         }
 
         // ------------
@@ -70,10 +75,15 @@ namespace PoConverter
             WarningCount = 0;
             QuietLogs = false;
 
-            ParseArguments(args, out string? folderPath, out string? choice, out bool skipTextures, out string language, out bool cleanAll, out bool autoYes, out string dictFile, out string? customDbPath, out bool splitSoundAuth, out bool extractSystemStrings);
+            CheckExternalTools();
+            AutoDownloadConfigIfNeeded();
+
+            ParseArguments(args, out string? folderPath, out string? choice, out bool skipTextures, out string language, out bool cleanAll, out bool autoYes, out string dictFile, out string? customDbPath, out bool splitSoundAuth, out bool extractSystemStrings, out bool debugTextVanillaTexture);
+
+            AutoDownloadDictionaryIfNeeded(dictFile);
 
             PrintHeader("  +------------------------------------------------------------+");
-            PrintHeader("  |        YAKUZA 6 LOCALIZATION TOOL - PIPELINE (v0.4)        |");
+            PrintHeader("  |       YAKUZA 6 LOCALIZATION TOOL - PIPELINE (v0.4.1)       |");
             PrintHeader("  +------------------------------------------------------------+");
             PrintInfo("  +------------------------------------------------------------+");
             PrintInfo("  | Credits & External Tools:                                  |");
@@ -102,6 +112,11 @@ namespace PoConverter
                 {
                     folderPath = "";
                 }
+            }
+
+            if (debugTextVanillaTexture)
+            {
+                choice = "1";
             }
 
             if (string.IsNullOrEmpty(choice))
@@ -153,6 +168,8 @@ namespace PoConverter
                 CustomDbPath = customDbPath,
                 SplitSoundAuth = splitSoundAuth,
                 ExtractSystemStrings = extractSystemStrings,
+                DebugTextVanillaTexture = debugTextVanillaTexture,
+                AutoYes = autoYes,
             };
 
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -161,7 +178,12 @@ namespace PoConverter
             int updatedTexturesCount = 0;
 
 
-            if (choice == "1")
+            if (ctx.DebugTextVanillaTexture)
+            {
+                RunDebugTextVanillaTextureWorkflow(ctx);
+                return;
+            }
+            else if (choice == "1")
             {
                 targetCount = RunExtraction(ctx);
             }
@@ -213,6 +235,153 @@ namespace PoConverter
             PrintHeader($"  +------------------------------------------------------------+");
 
             if (!autoYes)
+            {
+                Console.WriteLine("\n  Press ENTER to close...");
+                Console.ReadLine();
+            }
+        }
+
+        private static void RunDebugTextVanillaTextureWorkflow(PipelineContext ctx)
+        {
+            PrintHeader("\n  +------------------------------------------------------------+");
+            PrintHeader("  |      [PROCESS] DEBUG TEXT & VANILLA TEXTURE RECOMPILE      |");
+            PrintHeader("  +------------------------------------------------------------+");
+
+            Stopwatch stopwatch = Stopwatch.StartNew();
+
+            // Step 1: Extract patched texts (SkipTextures = true)
+            PrintHeader("\n[+] STEP 1: EXTRACTING TRANSLATED TEXTS (PO) FROM PATCHED GAME");
+            var phaseACtx = new PipelineContext
+            {
+                FolderPath = ctx.FolderPath,
+                PatchDir = ctx.PatchDir,
+                OgFileDir = ctx.OgFileDir,
+                OgJsonDir = ctx.OgJsonDir,
+                WorkspaceDir = ctx.WorkspaceDir,
+                OutputDir = ctx.OutputDir,
+                ConvertedJsonDir = ctx.ConvertedJsonDir,
+                WarningsFile = ctx.WarningsFile,
+                ErrorsFile = ctx.ErrorsFile,
+                Language = ctx.Language,
+                DictFile = ctx.DictFile,
+                RearmpCmd = ctx.RearmpCmd,
+                SkipTextures = true, // We only want texts
+                CleanAll = false,
+                AllowedBinFiles = ctx.AllowedBinFiles,
+                AllowedTextureFiles = ctx.AllowedTextureFiles,
+                AllowedCmnFiles = ctx.AllowedCmnFiles,
+                FolderFilters = ctx.FolderFilters,
+                CachedDict = ctx.CachedDict,
+                CustomDbPath = ctx.CustomDbPath,
+                SplitSoundAuth = ctx.SplitSoundAuth,
+                ExtractSystemStrings = ctx.ExtractSystemStrings,
+                DebugTextVanillaTexture = true,
+                AutoYes = ctx.AutoYes
+            };
+
+            int phaseATargets = RunExtraction(phaseACtx);
+            PrintSuccess($"\n  [OK] Step 1 complete. Extracted {phaseATargets} PO files to workspace.");
+
+            // Step 2: Trigger Steam validation to restore vanilla files
+            PrintHeader("\n[+] STEP 2: RESTORING GAME FILES TO VANILLA VIA STEAM");
+            PrintStep("  -> Triggering Steam verification for Yakuza 6...");
+            try
+            {
+                Process.Start(new ProcessStartInfo("steam://gameproperties/1388590") { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                PrintError($"  [!] Failed to start Steam properties window automatically: {ex.Message}");
+                PrintInfo("  Please open Steam, go to Yakuza 6 Properties manually.");
+            }
+            PrintWarning("\n  [IMPORTANT] The properties window for Yakuza 6 should open in Steam.");
+            PrintWarning("  Please go to the 'Installed Files' tab and click 'Verify integrity of game files'.");
+            PrintWarning("  Wait for Steam to complete the validation and restore files to vanilla.");
+            PrintInfo("  Once the validation is 100% complete, press ENTER to continue...");
+            Console.ReadLine();
+
+            // Step 3: Re-extract vanilla files (SkipTextures = false)
+            PrintHeader("\n[+] STEP 3: EXTRACTING VANILLA TEXTURES AND FILES");
+            // Prepare directories for Step 3, skipping cleanup of workspace to keep PO files!
+            InitializeDirectories("1", true, out _, out _, out _, out _, out _, out _, out _, out _, skipCleanup: true);
+
+            var phaseCCtx = new PipelineContext
+            {
+                FolderPath = ctx.FolderPath,
+                PatchDir = ctx.PatchDir,
+                OgFileDir = ctx.OgFileDir,
+                OgJsonDir = ctx.OgJsonDir,
+                WorkspaceDir = ctx.WorkspaceDir,
+                OutputDir = ctx.OutputDir,
+                ConvertedJsonDir = ctx.ConvertedJsonDir,
+                WarningsFile = ctx.WarningsFile,
+                ErrorsFile = ctx.ErrorsFile,
+                Language = ctx.Language,
+                DictFile = ctx.DictFile,
+                RearmpCmd = ctx.RearmpCmd,
+                SkipTextures = false, // We want vanilla textures!
+                CleanAll = false,
+                AllowedBinFiles = ctx.AllowedBinFiles,
+                AllowedTextureFiles = ctx.AllowedTextureFiles,
+                AllowedCmnFiles = ctx.AllowedCmnFiles,
+                FolderFilters = ctx.FolderFilters,
+                CachedDict = ctx.CachedDict,
+                CustomDbPath = ctx.CustomDbPath,
+                SplitSoundAuth = ctx.SplitSoundAuth,
+                ExtractSystemStrings = ctx.ExtractSystemStrings,
+                DebugTextVanillaTexture = true, // This will prevent ProcessExtractionFile from overwriting existing POs
+                AutoYes = ctx.AutoYes
+            };
+
+            int phaseCTargets = RunExtraction(phaseCCtx);
+            PrintSuccess($"\n  [OK] Step 3 complete. Re-extracted files and vanilla textures.");
+
+            // Step 4: Recreate patch using the POs and vanilla textures
+            PrintHeader("\n[+] STEP 4: RECREATING THE PATCH (TEXT TRANSLATED + VANILLA TEXTURE)");
+            // Initialize directories for recreation (choice = "2"), skipping cleanup of output just in case
+            InitializeDirectories("2", true, out _, out _, out _, out _, out _, out _, out _, out _, skipCleanup: true);
+
+            var phaseDCtx = new PipelineContext
+            {
+                FolderPath = ctx.FolderPath,
+                PatchDir = ctx.PatchDir,
+                OgFileDir = ctx.OgFileDir,
+                OgJsonDir = ctx.OgJsonDir,
+                WorkspaceDir = ctx.WorkspaceDir,
+                OutputDir = ctx.OutputDir,
+                ConvertedJsonDir = ctx.ConvertedJsonDir,
+                WarningsFile = ctx.WarningsFile,
+                ErrorsFile = ctx.ErrorsFile,
+                Language = ctx.Language,
+                DictFile = ctx.DictFile,
+                RearmpCmd = ctx.RearmpCmd,
+                SkipTextures = false, // Process vanilla textures into output
+                CleanAll = ctx.CleanAll,
+                AllowedBinFiles = ctx.AllowedBinFiles,
+                AllowedTextureFiles = ctx.AllowedTextureFiles,
+                AllowedCmnFiles = ctx.AllowedCmnFiles,
+                FolderFilters = ctx.FolderFilters,
+                CachedDict = ctx.CachedDict,
+                CustomDbPath = ctx.CustomDbPath,
+                SplitSoundAuth = ctx.SplitSoundAuth,
+                ExtractSystemStrings = ctx.ExtractSystemStrings,
+                DebugTextVanillaTexture = true,
+                AutoYes = ctx.AutoYes
+            };
+
+            var (recreatedTexts, recreatedTextures) = RunRecreation(phaseDCtx);
+            stopwatch.Stop();
+
+            PrintHeader($"\n  +------------------------------------------------------------+");
+            PrintSuccess($"  |  [OK] Text-Only Recompile Process Completed Successfully!  |");
+            PrintHeader($"  +------------------------------------------------------------+");
+            PrintInfo($"  |  * Completed in              : {stopwatch.Elapsed.TotalSeconds:F2} seconds      |");
+            PrintInfo($"  |  * Texts Recompiled          : {recreatedTexts,-28} |");
+            PrintInfo($"  |  * Textures Repacked         : {recreatedTextures,-28} |");
+            PrintInfo($"  |  * Final Patch Location      : {phaseDCtx.OutputDir,-28} |");
+            PrintHeader($"  +------------------------------------------------------------+");
+
+            if (!ctx.AutoYes)
             {
                 Console.WriteLine("\n  Press ENTER to close...");
                 Console.ReadLine();
@@ -728,7 +897,7 @@ namespace PoConverter
         // ------------
         // INITIALIZATION & ARGS
         // ------------
-        private static void InitializeDirectories(string choice, bool autoYes, out string patchDir, out string ogFileDir, out string ogJsonDir, out string workspaceDir, out string outputDir, out string convertedJsonDir, out string warningsFile, out string errorsFile)
+        private static void InitializeDirectories(string choice, bool autoYes, out string patchDir, out string ogFileDir, out string ogJsonDir, out string workspaceDir, out string outputDir, out string convertedJsonDir, out string warningsFile, out string errorsFile, bool skipCleanup = false)
         {
             patchDir = Path.Combine(Environment.CurrentDirectory, "Yakuza 6 - Patch");
             ogFileDir = Path.Combine(patchDir, "og file");
@@ -741,7 +910,7 @@ namespace PoConverter
 
             if (choice == "1")
             {
-                if (Directory.Exists(patchDir))
+                if (Directory.Exists(patchDir) && !skipCleanup)
                 {
                     bool doClean = autoYes;
                     if (!doClean)
@@ -763,7 +932,7 @@ namespace PoConverter
             }
             else if (choice == "2")
             {
-                if (Directory.Exists(outputDir))
+                if (Directory.Exists(outputDir) && !skipCleanup)
                 {
                     bool doClean = autoYes;
                     if (!doClean)
@@ -792,7 +961,7 @@ namespace PoConverter
             if (choice == "2") Directory.CreateDirectory(convertedJsonDir);
         }
 
-        private static void ParseArguments(string[] args, out string? folderPath, out string? choice, out bool skipTextures, out string language, out bool cleanAll, out bool autoYes, out string dictFile, out string? customDbPath, out bool splitSoundAuth, out bool extractSystemStrings)
+        private static void ParseArguments(string[] args, out string? folderPath, out string? choice, out bool skipTextures, out string language, out bool cleanAll, out bool autoYes, out string dictFile, out string? customDbPath, out bool splitSoundAuth, out bool extractSystemStrings, out bool debugTextVanillaTexture)
         {
             folderPath = null;
             choice = null;
@@ -804,6 +973,7 @@ namespace PoConverter
             customDbPath = null;
             splitSoundAuth = true;
             extractSystemStrings = true;
+            debugTextVanillaTexture = false;
 
             string configPath = "config.json";
             if (File.Exists(configPath))
@@ -888,6 +1058,10 @@ namespace PoConverter
                         case "-d":
                         case "--dict":
                             if (i + 1 < args.Length) dictFile = args[++i].Trim('"');
+                            break;
+                        case "-dtvt":
+                        case "--debug-text-vanilla-texture":
+                            debugTextVanillaTexture = true;
                             break;
                     }
                 }
@@ -1261,25 +1435,33 @@ namespace PoConverter
             }
             else if (isTargetCmn)
             {
-                PrintStep("  -> [BinaryScanner] Extracting texts from .bin...");
-                try
+                if (ctx.DebugTextVanillaTexture && File.Exists(poPath))
                 {
-                    var texts = Yakuza6LocalizationTool.CmnTextManager.ExtractTexts(copiedBinPath);
-                    if (texts.Count > 0)
-                    {
-                        Directory.CreateDirectory(currentWorkspaceDir);
-                        PoConverter.DictToPo(texts, poPath, ctx.Language, ctx.ExtractSystemStrings);
-                        PrintSuccess($"  [OK] Created PO file: {relPath}\\{Path.GetFileName(poPath)}");
-                        kept = true;
-                    }
-                    else
-                    {
-                        PrintWarning($"  [-] No valid translatable text found. Skipping.");
-                    }
+                    PrintStep($"  -> [Pipeline] PO file already exists at {Path.GetFileName(poPath)}. Skipping CMN text extraction (preserving translation).");
+                    kept = true;
                 }
-                catch (Exception ex)
+                else
                 {
-                    PrintError($"  [!] Error during CMN extraction for {filename}: {ex.Message}");
+                    PrintStep("  -> [BinaryScanner] Extracting texts from .bin...");
+                    try
+                    {
+                        var texts = Yakuza6LocalizationTool.CmnTextManager.ExtractTexts(copiedBinPath);
+                        if (texts.Count > 0)
+                        {
+                            Directory.CreateDirectory(currentWorkspaceDir);
+                            PoConverter.DictToPo(texts, poPath, ctx.Language, ctx.ExtractSystemStrings);
+                            PrintSuccess($"  [OK] Created PO file: {relPath}\\{Path.GetFileName(poPath)}");
+                            kept = true;
+                        }
+                        else
+                        {
+                            PrintWarning($"  [-] No valid translatable text found. Skipping.");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        PrintError($"  [!] Error during CMN extraction for {filename}: {ex.Message}");
+                    }
                 }
             }
             else if (isTargetBin)
@@ -1296,42 +1478,49 @@ namespace PoConverter
 
                     if (MoveGeneratedFile(actualGeneratedJson, targetJsonPath))
                     {
-
-                        PrintStep("  -> [PoConverter] Generating PO file internally...");
-                        try
+                        if (ctx.DebugTextVanillaTexture && File.Exists(poPath))
                         {
-                            int count = PoConverter.JsonToPo(targetJsonPath, poPath, ctx.DictFile, ctx.Language, ctx.CachedDict);
-                            if (count > 0)
+                            PrintStep($"  -> [Pipeline] PO file already exists at {Path.GetFileName(poPath)}. Skipping JSON to PO conversion (preserving translation).");
+                            kept = true;
+                        }
+                        else
+                        {
+                            PrintStep("  -> [PoConverter] Generating PO file internally...");
+                            try
                             {
-                                PrintSuccess($"  [OK] Created PO file: {relPath}\\{Path.GetFileName(poPath)}");
-                                kept = true;
-
-                                // AUTOMATICALLY SPLIT SOUND_AUTH.PO
-                                if (ctx.SplitSoundAuth && filename.Equals("sound_auth.bin", StringComparison.OrdinalIgnoreCase))
+                                int count = PoConverter.JsonToPo(targetJsonPath, poPath, ctx.DictFile, ctx.Language, ctx.CachedDict);
+                                if (count > 0)
                                 {
-                                    string splitDir = Path.Combine(currentWorkspaceDir, "sound_auth_split");
-                                    PrintStep($"  -> [PoSplitter] Splitting sound_auth.po into smaller files...");
-                                    Yakuza6LocalizationTool.PoSplitterMerger.SplitPoFile(poPath, splitDir);
-                                    if (Directory.Exists(splitDir) && Directory.GetFiles(splitDir, "*.po").Length > 0)
+                                    PrintSuccess($"  [OK] Created PO file: {relPath}\\{Path.GetFileName(poPath)}");
+                                    kept = true;
+
+                                    // AUTOMATICALLY SPLIT SOUND_AUTH.PO
+                                    if (ctx.SplitSoundAuth && filename.Equals("sound_auth.bin", StringComparison.OrdinalIgnoreCase))
                                     {
-                                        File.Delete(poPath); // Delete the whole file to avoid confusing translators
-                                        PrintSuccess($"  [OK] Split sound_auth.po into {GetRelativeWorkspacePath(splitDir, ctx.WorkspaceDir)}");
-                                    }
-                                    else
-                                    {
-                                        PrintError($"  [!] Error: sound_auth.po split failed. Original PO kept.");
+                                        string splitDir = Path.Combine(currentWorkspaceDir, "sound_auth_split");
+                                        PrintStep($"  -> [PoSplitter] Splitting sound_auth.po into smaller files...");
+                                        Yakuza6LocalizationTool.PoSplitterMerger.SplitPoFile(poPath, splitDir);
+                                        if (Directory.Exists(splitDir) && Directory.GetFiles(splitDir, "*.po").Length > 0)
+                                        {
+                                            File.Delete(poPath); // Delete the whole file to avoid confusing translators
+                                            PrintSuccess($"  [OK] Split sound_auth.po into {GetRelativeWorkspacePath(splitDir, ctx.WorkspaceDir)}");
+                                        }
+                                        else
+                                        {
+                                            PrintError($"  [!] Error: sound_auth.po split failed. Original PO kept.");
+                                        }
                                     }
                                 }
+                                else
+                                {
+                                    PrintWarning($"  [-] No valid strings found in {filename}. Skipping.");
+                                    File.Delete(targetJsonPath);
+                                }
                             }
-                            else
+                            catch (Exception ex)
                             {
-                                PrintWarning($"  [-] No valid strings found in {filename}. Skipping.");
-                                File.Delete(targetJsonPath);
+                                PrintError($"  [!] Error during PO conversion for {filename}: {ex.Message}");
                             }
-                        }
-                        catch (Exception ex)
-                        {
-                            PrintError($"  [!] Error during PO conversion for {filename}: {ex.Message}");
                         }
                     }
                     else
@@ -1642,6 +1831,129 @@ namespace PoConverter
             catch (Exception ex)
             {
                 PrintStep($"  [!] Could not delete file '{Path.GetFileName(path)}': {ex.Message}");
+            }
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern int MessageBox(IntPtr hWnd, string text, string caption, uint type);
+
+        private static bool ShowMessageBoxYesNo(string message, string title)
+        {
+            const uint MB_YESNO = 0x00000004;
+            const uint MB_ICONWARNING = 0x00000030;
+            const int IDYES = 6;
+            try
+            {
+                return MessageBox(IntPtr.Zero, message, title, MB_YESNO | MB_ICONWARNING) == IDYES;
+            }
+            catch
+            {
+                PrintWarning($"\n[MessageBox Fallback] {message}");
+                Console.Write("  Your response (y/n) -> ");
+                string? ans = Console.ReadLine()?.Trim().ToLower();
+                return ans == "y" || ans == "yes";
+            }
+        }
+
+        private static void CheckExternalTools()
+        {
+            bool rearmpExists = File.Exists("reARMP.exe");
+            bool partoolExists = File.Exists("ParTool.exe");
+
+            if (!rearmpExists || !partoolExists)
+            {
+                string missing = "";
+                if (!rearmpExists && !partoolExists) missing = "reARMP.exe and ParTool.exe";
+                else if (!rearmpExists) missing = "reARMP.exe";
+                else missing = "ParTool.exe";
+
+                string msg = $"The following external tools are missing: {missing}.\n\nWould you like to download them from the official repositories? This will open their GitHub pages and close the program.";
+                if (ShowMessageBoxYesNo(msg, "Missing External Tools"))
+                {
+                    try
+                    {
+                        Process.Start(new ProcessStartInfo("https://github.com/Ret-HZ/reARMP") { UseShellExecute = true });
+                        Process.Start(new ProcessStartInfo("https://github.com/Kaplas80/ParManager") { UseShellExecute = true });
+                    }
+                    catch (Exception ex)
+                    {
+                        PrintError($"Error opening browser: {ex.Message}");
+                    }
+                }
+                Environment.Exit(0);
+            }
+        }
+
+        private static void AutoDownloadConfigIfNeeded()
+        {
+            string configPath = "config.json";
+            if (!File.Exists(configPath))
+            {
+                PrintStep("  -> [Pipeline] config.json not found. Initiating automatic download from GitHub...");
+                DownloadFromGitHubRelease(configPath);
+            }
+        }
+
+        private static void AutoDownloadDictionaryIfNeeded(string dictFile)
+        {
+            if (!File.Exists(dictFile))
+            {
+                PrintStep($"  -> [Pipeline] Dictionary file '{dictFile}' not found. Initiating automatic download from GitHub...");
+                DownloadFromGitHubRelease(dictFile);
+            }
+        }
+
+        private static void DownloadFromGitHubRelease(string filename)
+        {
+            string currentReleaseUrl = $"https://github.com/zSavT/Yakuza-6-Localization-Tool/releases/download/v{ToolVersion}/{filename}";
+            string fallbackReleaseUrl = $"https://github.com/zSavT/Yakuza-6-Localization-Tool/releases/download/v0.4/{filename}";
+
+            using (var client = new HttpClient())
+            {
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+
+                try
+                {
+                    PrintInfo($"  Downloading {filename} from: {currentReleaseUrl}");
+                    var response = client.GetAsync(currentReleaseUrl).GetAwaiter().GetResult();
+                    if (response.IsSuccessStatusCode)
+                    {
+                        using (var fs = new FileStream(filename, FileMode.Create, FileAccess.Write, FileShare.None))
+                        {
+                            response.Content.CopyToAsync(fs).GetAwaiter().GetResult();
+                        }
+                        PrintSuccess($"  [OK] Successfully downloaded {filename}!");
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    PrintWarning($"  Attempt with release v{ToolVersion} failed: {ex.Message}");
+                }
+
+                // Fallback
+                try
+                {
+                    PrintInfo($"  [Fallback] Downloading {filename} from fallback release v0.4: {fallbackReleaseUrl}");
+                    var response = client.GetAsync(fallbackReleaseUrl).GetAwaiter().GetResult();
+                    if (response.IsSuccessStatusCode)
+                    {
+                        using (var fs = new FileStream(filename, FileMode.Create, FileAccess.Write, FileShare.None))
+                        {
+                            response.Content.CopyToAsync(fs).GetAwaiter().GetResult();
+                        }
+                        PrintSuccess($"  [OK] Successfully downloaded {filename} (from fallback release v0.4)!");
+                        return;
+                    }
+                    else
+                    {
+                        PrintError($"  [!] Download failed for {filename}. HTTP Status Code: {response.StatusCode}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    PrintError($"  [!] Error during fallback download: {ex.Message}");
+                }
             }
         }
     }
