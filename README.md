@@ -61,6 +61,7 @@ You can run the tool from the command line or via a `.bat` script using these op
 - `-q`, `--quiet`: Suppress output logs from external tools (reARMP, ParTool).
 - `-ns`, `--no-split`: Disable automatic splitting of the `sound_auth.po` file during extraction.
 - `-d "PATH"`, `--dict "PATH"`: Specify a custom dictionary file (default: `dictionary.json`).
+- `-dtvt`, `--debug-text-vanilla-texture`: Auto-run the text-only recompile process. It extracts translated PO files from your patched game, opens Steam to verify/restore game files to vanilla, re-extracts the vanilla files/textures, and compiles everything into a new patch containing your translated text but original vanilla textures.
 
 **Example (.bat script):**
 `PoConverter.exe -g "C:\Steam\steamapps\common\Yakuza 6" -r -t -y -d "my_dictionary.json"`
