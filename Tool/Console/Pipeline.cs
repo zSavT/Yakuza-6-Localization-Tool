@@ -1849,7 +1849,7 @@ namespace PoConverter
             catch
             {
                 PrintWarning($"\n[MessageBox Fallback] {message}");
-                Console.Write("  La tua risposta (y/n) -> ");
+                Console.Write("  Your response (y/n) -> ");
                 string? ans = Console.ReadLine()?.Trim().ToLower();
                 return ans == "y" || ans == "yes";
             }
@@ -1863,21 +1863,21 @@ namespace PoConverter
             if (!rearmpExists || !partoolExists)
             {
                 string missing = "";
-                if (!rearmpExists && !partoolExists) missing = "reARMP.exe e ParTool.exe";
+                if (!rearmpExists && !partoolExists) missing = "reARMP.exe and ParTool.exe";
                 else if (!rearmpExists) missing = "reARMP.exe";
                 else missing = "ParTool.exe";
 
-                string msg = $"I seguenti tool esterni sono mancanti: {missing}.\n\nVuoi scaricarli dai repository ufficiali? Verranno aperti i link nel browser e il programma verrà chiuso.";
-                if (ShowMessageBoxYesNo(msg, "Tool Esterni Mancanti"))
+                string msg = $"The following external tools are missing: {missing}.\n\nWould you like to download them from the official repositories? This will open their GitHub pages and close the program.";
+                if (ShowMessageBoxYesNo(msg, "Missing External Tools"))
                 {
                     try
                     {
                         Process.Start(new ProcessStartInfo("https://github.com/Ret-HZ/reARMP") { UseShellExecute = true });
-                        Process.Start(new ProcessStartInfo("https://github.com/Kaplas80/ParTool") { UseShellExecute = true });
+                        Process.Start(new ProcessStartInfo("https://github.com/Kaplas80/ParManager") { UseShellExecute = true });
                     }
                     catch (Exception ex)
                     {
-                        PrintError($"Errore nell'apertura del browser: {ex.Message}");
+                        PrintError($"Error opening browser: {ex.Message}");
                     }
                 }
                 Environment.Exit(0);
@@ -1889,7 +1889,7 @@ namespace PoConverter
             string configPath = "config.json";
             if (!File.Exists(configPath))
             {
-                PrintStep("  -> [Pipeline] config.json non trovato. Download automatico da GitHub in corso...");
+                PrintStep("  -> [Pipeline] config.json not found. Initiating automatic download from GitHub...");
                 DownloadFromGitHubRelease(configPath);
             }
         }
@@ -1898,7 +1898,7 @@ namespace PoConverter
         {
             if (!File.Exists(dictFile))
             {
-                PrintStep($"  -> [Pipeline] Dizionario '{dictFile}' non trovato. Download automatico da GitHub in corso...");
+                PrintStep($"  -> [Pipeline] Dictionary file '{dictFile}' not found. Initiating automatic download from GitHub...");
                 DownloadFromGitHubRelease(dictFile);
             }
         }
@@ -1914,7 +1914,7 @@ namespace PoConverter
 
                 try
                 {
-                    PrintInfo($"  Scaricamento di {filename} da: {currentReleaseUrl}");
+                    PrintInfo($"  Downloading {filename} from: {currentReleaseUrl}");
                     var response = client.GetAsync(currentReleaseUrl).GetAwaiter().GetResult();
                     if (response.IsSuccessStatusCode)
                     {
@@ -1922,19 +1922,19 @@ namespace PoConverter
                         {
                             response.Content.CopyToAsync(fs).GetAwaiter().GetResult();
                         }
-                        PrintSuccess($"  [OK] Scaricato con successo {filename}!");
+                        PrintSuccess($"  [OK] Successfully downloaded {filename}!");
                         return;
                     }
                 }
                 catch (Exception ex)
                 {
-                    PrintWarning($"  Tentativo con release v{ToolVersion} fallito: {ex.Message}");
+                    PrintWarning($"  Attempt with release v{ToolVersion} failed: {ex.Message}");
                 }
 
                 // Fallback
                 try
                 {
-                    PrintInfo($"  [Fallback] Scaricamento di {filename} da release v0.4: {fallbackReleaseUrl}");
+                    PrintInfo($"  [Fallback] Downloading {filename} from fallback release v0.4: {fallbackReleaseUrl}");
                     var response = client.GetAsync(fallbackReleaseUrl).GetAwaiter().GetResult();
                     if (response.IsSuccessStatusCode)
                     {
@@ -1942,17 +1942,17 @@ namespace PoConverter
                         {
                             response.Content.CopyToAsync(fs).GetAwaiter().GetResult();
                         }
-                        PrintSuccess($"  [OK] Scaricato con successo {filename} (da release fallback v0.4)!");
+                        PrintSuccess($"  [OK] Successfully downloaded {filename} (from fallback release v0.4)!");
                         return;
                     }
                     else
                     {
-                        PrintError($"  [!] Download fallito per {filename}. Codice stato HTTP: {response.StatusCode}");
+                        PrintError($"  [!] Download failed for {filename}. HTTP Status Code: {response.StatusCode}");
                     }
                 }
                 catch (Exception ex)
                 {
-                    PrintError($"  [!] Errore durante il download fallback: {ex.Message}");
+                    PrintError($"  [!] Error during fallback download: {ex.Message}");
                 }
             }
         }
